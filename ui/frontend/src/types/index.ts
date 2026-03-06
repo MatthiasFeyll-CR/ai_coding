@@ -155,9 +155,10 @@ export interface WebSocketEvents {
     message: string;
   };
   setup_progress: {
-    setup_id: string;
     step: string;
     status: string;
     message: string;
+    type?: 'progress' | 'assistant' | 'assistant_delta' | 'tool_use' | 'result' | 'error' | 'info' | 'output';
+    timestamp?: string;
   };
 }

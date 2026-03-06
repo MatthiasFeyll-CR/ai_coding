@@ -9,7 +9,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { useAppStore } from '@/store/appStore';
 import { createMockProject, renderWithProviders } from '@/test/helpers';
 import { screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the API
 vi.mock('@/api/client', () => ({

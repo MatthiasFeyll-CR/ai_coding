@@ -3,7 +3,7 @@
  */
 import { healthApi, pipelineApi, projectsApi } from '@/api/client';
 import axios from 'axios';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock axios
 vi.mock('axios', () => {

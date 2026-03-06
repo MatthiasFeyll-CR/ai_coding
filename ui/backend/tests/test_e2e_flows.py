@@ -11,7 +11,6 @@ import shutil
 import tempfile
 
 
-
 class TestLinkToDashboardFlow:
     """
     E2E: Link project → verify it appears in list → fetch dashboard data.
@@ -55,7 +54,8 @@ class TestLinkToDashboardFlow:
 
         # 6. No state file yet
         resp = client.get(f"/api/projects/{pid}/state")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "no_state"
 
         # 7. File tree is readable
         resp = client.get(f"/api/files/{pid}/tree")
@@ -72,7 +72,13 @@ class TestLinkToDashboardFlow:
         mock_invoker = MagicMock()
         monkeypatch.setattr(
             "services.configurator_invoker.ConfiguratorInvoker",
-            lambda project: mock_invoker,
+            lambda *args, **kwargs: mock_invoker,
+        )
+        # Mock start_background_task to prevent actual green thread spawning
+        from app import socketio
+
+        monkeypatch.setattr(
+            socketio, "start_background_task", lambda fn, *a, **kw: None
         )
 
         # Link
@@ -340,9 +346,7 @@ class TestFileExplorerFlow:
         assert tree["type"] == "directory"
 
         # Find src in children
-        src_node = next(
-            (c for c in tree["children"] if c["name"] == "src"), None
-        )
+        src_node = next((c for c in tree["children"] if c["name"] == "src"), None)
         assert src_node is not None
         assert src_node["type"] == "directory"
 
@@ -370,9 +374,7 @@ class TestProjectDeletionCascade:
 
         # Create some data
         client.post(f"/api/projects/{pid}/snapshots")
-        db_session.add(
-            ExecutionLog(project_id=pid, message="test", log_level="info")
-        )
+        db_session.add(ExecutionLog(project_id=pid, message="test", log_level="info"))
         db_session.add(
             TokenUsage(
                 project_id=pid,

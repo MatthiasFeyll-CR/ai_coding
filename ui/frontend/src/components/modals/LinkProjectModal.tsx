@@ -4,12 +4,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { XIcon } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export function LinkProjectModal() {
-  const { modals, closeModal } = useAppStore();
+  const { modals, closeModal, setActiveProject } = useAppStore();
   const [projectPath, setProjectPath] = useState('');
   const [projectName, setProjectName] = useState('');
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -17,11 +19,13 @@ export function LinkProjectModal() {
         project_path: projectPath,
         name: projectName || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setActiveProject(response.data);
       closeModal('linkProject');
       setProjectPath('');
       setProjectName('');
+      navigate(`/dashboard/${response.data.id}`);
     },
   });
 

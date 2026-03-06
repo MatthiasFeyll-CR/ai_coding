@@ -1,6 +1,7 @@
 """Projects API endpoints."""
 
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -8,6 +9,8 @@ from database import db
 from flask import Blueprint, jsonify, request
 from models import ModelConfig, Project, StateSnapshot
 from sqlalchemy.exc import IntegrityError
+
+log = logging.getLogger("ralph-ui.projects")
 
 bp = Blueprint("projects", __name__)
 
@@ -77,8 +80,13 @@ def delete_project(project_id):
 @bp.route("/pre-check", methods=["POST"])
 def pre_check_project():
     """Pre-check project for required documentation."""
-    data = request.json
-    project_path = Path(data.get("project_path"))
+    data = request.json or {}
+    raw_path = data.get("project_path")
+
+    if not raw_path:
+        return jsonify({"error": "project_path is required"}), 400
+
+    project_path = Path(raw_path)
 
     if not project_path.exists():
         return jsonify({"error": "Path does not exist"}), 400
@@ -137,34 +145,49 @@ def pre_check_project():
 @bp.route("/setup", methods=["POST"])
 def setup_project():
     """Start automated project setup."""
-    data = request.json
+    data = request.json or {}
     project_path = data.get("project_path")
+
+    if not project_path:
+        return jsonify({"error": "project_path is required"}), 400
+
+    if not os.path.exists(project_path):
+        return jsonify({"error": "Project path does not exist"}), 400
 
     # Create project record
     project_name = Path(project_path).name
     config_path = os.path.join(project_path, "pipeline-config.json")
 
-    project = Project(
-        name=project_name,
-        root_path=project_path,
-        config_path=config_path,
-        status="configuring",
-    )
-    db.session.add(project)
-    db.session.commit()
+    try:
+        project = Project(
+            name=project_name,
+            root_path=project_path,
+            config_path=config_path,
+            status="configuring",
+        )
+        db.session.add(project)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        existing = Project.query.filter_by(root_path=project_path).first()
+        if existing:
+            project = existing
+            project.status = "configuring"
+            db.session.commit()
+        else:
+            return jsonify({"error": "Project already exists"}), 409
 
     # Invoke configurator in background
-    from threading import Thread
-
+    from app import app as flask_app
+    from app import socketio
     from services.configurator_invoker import ConfiguratorInvoker
 
-    configurator = ConfiguratorInvoker(project)
-    thread = Thread(target=configurator.run_setup)
-    thread.daemon = True
-    thread.start()
+    project_id = project.id
+    configurator = ConfiguratorInvoker(project_id, socketio=socketio, app=flask_app)
+    socketio.start_background_task(configurator.run_setup)
 
     return (
-        jsonify({"project_id": project.id, "status": "setup_started"}),
+        jsonify({"project_id": project_id, "status": "setup_started"}),
         202,
     )
 
@@ -183,17 +206,17 @@ def configure_project(project_id):
     db.session.commit()
 
     # Invoke configurator in background
-    from threading import Thread
-
+    from app import app as flask_app
+    from app import socketio
     from services.configurator_invoker import ConfiguratorInvoker
 
-    configurator = ConfiguratorInvoker(project)
-    thread = Thread(target=configurator.run_setup)
-    thread.daemon = True
-    thread.start()
+    pid = project.id
+    log.info("Starting configurator for project %d (%s)", pid, project.root_path)
+    configurator = ConfiguratorInvoker(pid, socketio=socketio, app=flask_app)
+    socketio.start_background_task(configurator.run_setup)
 
     return (
-        jsonify({"project_id": project.id, "status": "configuring"}),
+        jsonify({"project_id": pid, "status": "configuring"}),
         202,
     )
 
@@ -218,14 +241,14 @@ def get_state(project_id):
     state_path = Path(project.root_path) / ".ralph" / "state.json"
 
     if not state_path.exists():
-        return jsonify({"message": "No state file found"}), 404
+        return jsonify({"status": "no_state", "message": "No pipeline state yet"})
 
     try:
         with open(state_path, "r") as f:
             state = json.load(f)
         return jsonify(state)
-    except FileNotFoundError:
-        return jsonify({"error": "State file not found"}), 404
+    except (FileNotFoundError, json.JSONDecodeError):
+        return jsonify({"status": "no_state", "message": "No pipeline state yet"})
 
 
 @bp.route("/<int:project_id>/snapshots", methods=["GET"])

@@ -835,9 +835,8 @@ def update_models(project_id):
 def list_available_models():
     """List available models."""
     models = [
-        'claude-opus-4',
-        'claude-3-5-sonnet-20241022',
-        'claude-3-5-haiku'
+        'claude-opus-4.6',
+        'claude-sonnet-4.5',
     ]
     return jsonify(models)
 ```

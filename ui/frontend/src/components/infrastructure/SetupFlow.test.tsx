@@ -6,7 +6,7 @@ import { SetupFlow } from '@/components/infrastructure/SetupFlow';
 import { createMockPreCheck, createMockProject, renderWithProviders } from '@/test/helpers';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the API
 vi.mock('@/api/client', () => ({

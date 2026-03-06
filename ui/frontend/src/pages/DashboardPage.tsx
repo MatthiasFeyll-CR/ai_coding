@@ -19,7 +19,8 @@ import {
     GitBranchIcon,
     SettingsIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 
 type TabId = 'state' | 'git' | 'costs' | 'tests' | 'infrastructure';
 
@@ -32,14 +33,37 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 ];
 
 export function DashboardPage() {
-  const { activeProject } = useAppStore();
+  const { activeProject, setActiveProject } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabId>('state');
+  const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
 
-  // Fetch pipeline state
+  // If URL has a projectId but no activeProject (or different one), load it
+  const { data: urlProject } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => projectsApi.get(Number(projectId)).then((res) => res.data),
+    enabled: !!projectId && (!activeProject || activeProject.id !== Number(projectId)),
+  });
+
+  // Sync URL project → store
+  useEffect(() => {
+    if (urlProject && (!activeProject || activeProject.id !== urlProject.id)) {
+      setActiveProject(urlProject);
+    }
+  }, [urlProject, activeProject, setActiveProject]);
+
+  // Sync store → URL (when project changes via sidebar/modal, update URL)
+  useEffect(() => {
+    if (activeProject && (!projectId || Number(projectId) !== activeProject.id)) {
+      navigate(`/dashboard/${activeProject.id}`, { replace: true });
+    }
+  }, [activeProject, projectId, navigate]);
+
+  // Fetch pipeline state (only poll when project is fully set up)
   const { data: pipelineState } = useQuery({
     queryKey: ['project-state', activeProject?.id],
     queryFn: () => projectsApi.getState(activeProject!.id).then((res) => res.data),
-    enabled: !!activeProject?.id,
+    enabled: !!activeProject?.id && !!activeProject?.is_setup,
     refetchInterval: 5000,
   });
 

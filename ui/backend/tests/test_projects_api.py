@@ -7,7 +7,6 @@ import json
 import os
 
 
-
 class TestCreateProject:
     """POST /api/projects"""
 
@@ -55,7 +54,9 @@ class TestCreateProject:
         assert resp.status_code == 201
         assert resp.get_json()["is_setup"] is False
 
-    def test_link_project_with_config_is_setup(self, client, sample_project_with_config):
+    def test_link_project_with_config_is_setup(
+        self, client, sample_project_with_config
+    ):
         resp = client.post(
             "/api/projects",
             json={"project_path": sample_project_with_config},
@@ -187,7 +188,9 @@ class TestPreCheck:
         )
         assert resp.status_code == 400
 
-    def test_pre_check_detects_infrastructure_files(self, client, sample_project_with_config):
+    def test_pre_check_detects_infrastructure_files(
+        self, client, sample_project_with_config
+    ):
         resp = client.post(
             "/api/projects/pre-check",
             json={"project_path": sample_project_with_config},
@@ -216,9 +219,7 @@ class TestGetState:
     """GET /api/projects/<id>/state"""
 
     def test_get_state_exists(self, client, linked_project_with_state):
-        resp = client.get(
-            f"/api/projects/{linked_project_with_state['id']}/state"
-        )
+        resp = client.get(f"/api/projects/{linked_project_with_state['id']}/state")
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["current_phase"] == "prd_generation"
@@ -226,7 +227,9 @@ class TestGetState:
 
     def test_get_state_missing(self, client, linked_project):
         resp = client.get(f"/api/projects/{linked_project['id']}/state")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "no_state"
 
 
 class TestSnapshots:
@@ -329,7 +332,13 @@ class TestConfigureProject:
         mock_invoker = MagicMock()
         monkeypatch.setattr(
             "services.configurator_invoker.ConfiguratorInvoker",
-            lambda project: mock_invoker,
+            lambda *args, **kwargs: mock_invoker,
+        )
+        # Mock start_background_task to prevent actual green thread spawning
+        from app import socketio
+
+        monkeypatch.setattr(
+            socketio, "start_background_task", lambda fn, *a, **kw: None
         )
 
         pid = linked_project["id"]
@@ -342,7 +351,9 @@ class TestConfigureProject:
         resp2 = client.get(f"/api/projects/{pid}")
         assert resp2.get_json()["status"] == "configuring"
 
-    def test_configure_already_configuring(self, client, linked_project, monkeypatch, db_session):
+    def test_configure_already_configuring(
+        self, client, linked_project, monkeypatch, db_session
+    ):
         """Cannot re-configure while already configuring."""
         from models import Project
 

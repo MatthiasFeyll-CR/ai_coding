@@ -15,8 +15,11 @@ export default function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="dashboard/:projectId" element={<DashboardPage />} />
           <Route path="editor" element={<EditorPage />} />
+          <Route path="editor/:projectId" element={<EditorPage />} />
           <Route path="requirements" element={<RequirementsPage />} />
+          <Route path="requirements/:projectId" element={<RequirementsPage />} />
         </Route>
       </Routes>
 
