@@ -315,4 +315,3 @@ def list_available_models():
         "claude-3-5-haiku",
     ]
     return jsonify(models)
-    return jsonify(models)
