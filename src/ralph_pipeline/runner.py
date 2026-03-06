@@ -237,6 +237,8 @@ class MilestoneRunner:
             test_runner=self.test_runner,
             plogger=self.plogger,
             project_root=self.project_root,
+            claude=self.claude,
+            event_logger=self.event_logger,
         )
         self.event_logger.emit(
             "phase_end", milestone=self.milestone.id, data={"phase": "ralph_execution"}
@@ -256,6 +258,7 @@ class MilestoneRunner:
             git=self.git,
             plogger=self.plogger,
             project_root=self.project_root,
+            event_logger=self.event_logger,
         )
         self.event_logger.emit(
             "phase_end",
@@ -318,4 +321,5 @@ class MilestoneRunner:
         self.event_logger.emit(
             "phase_end", milestone=self.milestone.id, data={"phase": "reconciliation"}
         )
+        self.reconciled()
         self.reconciled()

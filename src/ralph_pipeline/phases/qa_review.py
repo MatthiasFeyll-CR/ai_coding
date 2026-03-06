@@ -18,6 +18,7 @@ from ralph_pipeline.infra.test_runner import TestRunner
 from ralph_pipeline.log import PipelineLogger
 from ralph_pipeline.phases.ralph_execution import run_ralph_bugfix
 from ralph_pipeline.subprocess_utils import is_dry_run
+from ralph_pipeline.usage import EventLogger
 
 
 def _extract_verdict(qa_report: Path) -> str:
@@ -178,6 +179,7 @@ def run_qa_review(
     git: GitOps,
     plogger: PipelineLogger,
     project_root: Path,
+    event_logger: EventLogger | None = None,
 ) -> bool:
     """Run QA review with bugfix cycles.
 
@@ -203,7 +205,15 @@ def run_qa_review(
     for cycle in range(0, config.qa.max_bugfix_cycles + 1):
         if cycle > 0:
             plogger.info(f"Bugfix cycle {cycle} for M{milestone.id}")
-            run_ralph_bugfix(milestone, config, git, project_root, plogger)
+            run_ralph_bugfix(
+                milestone,
+                config,
+                git,
+                project_root,
+                plogger,
+                claude=claude,
+                event_logger=event_logger,
+            )
 
         plogger.info(f"Running QA for M{milestone.id} (cycle {cycle})...")
 
@@ -294,4 +304,5 @@ def run_qa_review(
             _archive_milestone(milestone, config, project_root, plogger)
             return False
 
+    return False
     return False

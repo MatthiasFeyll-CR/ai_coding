@@ -36,11 +36,13 @@ class ClaudeRunner:
         retry_config: RetryConfig,
         usage_logger: EventLogger,
         logger: PipelineLogger,
+        env: dict[str, str] | None = None,
     ):
         self.max_retries = retry_config.max_retries
         self.backoff = retry_config.backoff_seconds
         self.usage = usage_logger
         self.log = logger
+        self._env = env  # Claude subprocess environment (AI credentials)
 
     def run(
         self,
@@ -84,6 +86,7 @@ class ClaudeRunner:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    env=self._env,
                 )
 
                 assert proc.stdin is not None

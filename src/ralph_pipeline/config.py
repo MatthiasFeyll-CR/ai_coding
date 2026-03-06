@@ -115,8 +115,20 @@ class TestExecutionConfig(BaseModel):
 
 
 class EnvSetupConfig(BaseModel):
+    """Legacy env_setup config — kept for backward compatibility.
+
+    Deprecated: Use .ai.env file in the project root instead.
+    """
+
     source_file: Optional[str] = None
     setup_function: Optional[str] = None
+
+
+class AIEnvConfig(BaseModel):
+    """AI credentials configuration — .ai.env file in the target project."""
+
+    env_file: str = ".ai.env"
+    required_keys: list[str] = ["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY"]
 
 
 class RetryConfig(BaseModel):
@@ -135,7 +147,8 @@ class PipelineConfig(BaseModel):
     qa: QAConfig = QAConfig()
     gate_checks: GateChecksConfig = GateChecksConfig()
     test_execution: TestExecutionConfig = TestExecutionConfig()
-    env_setup: EnvSetupConfig = EnvSetupConfig()
+    env_setup: EnvSetupConfig = EnvSetupConfig()  # Legacy — ignored
+    ai_env: AIEnvConfig = AIEnvConfig()
     retry: RetryConfig = RetryConfig()
 
     @field_validator("milestones")

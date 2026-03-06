@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from ralph_pipeline.ai.claude import ClaudeRunner
+from ralph_pipeline.ai.env import AIEnvError, build_claude_env, load_and_validate_ai_env
 from ralph_pipeline.config import PipelineConfig
 from ralph_pipeline.git_ops import GitOps
 from ralph_pipeline.infra.health import ServiceHealthChecker
@@ -117,7 +118,19 @@ def run_pipeline(args: argparse.Namespace) -> None:
     infra = TestInfraManager(
         config.test_execution, project_root, health_checker, plogger
     )
-    claude = ClaudeRunner(config.retry, event_logger, plogger)
+    # Load and validate AI credentials from .ai.env
+    claude_env: dict[str, str] | None = None
+    if not args.dry_run:
+        try:
+            ai_env = load_and_validate_ai_env(
+                project_root, plogger, env_file=config.ai_env.env_file
+            )
+            claude_env = build_claude_env(ai_env, model_override=config.models.ralph)
+        except AIEnvError as e:
+            plogger.error(str(e))
+            sys.exit(1)
+
+    claude = ClaudeRunner(config.retry, event_logger, plogger, env=claude_env)
     test_runner = TestRunner(
         config.test_execution, infra, claude, plogger, project_root, git
     )
@@ -180,29 +193,6 @@ def run_pipeline(args: argparse.Namespace) -> None:
                         plogger.warning(f"{r.name}: {r.error}")
         except Exception as e:
             plogger.warning(f"Infra pre-validation: {e}")
-
-    # Source env setup if configured (design §5.6 EnvSetupConfig)
-    if (
-        not args.dry_run
-        and config.env_setup.source_file
-        and config.env_setup.setup_function
-    ):
-        plogger.info(
-            f"Sourcing env setup: {config.env_setup.source_file} → {config.env_setup.setup_function}()"
-        )
-        try:
-            from ralph_pipeline.subprocess_utils import run_command
-
-            run_command(
-                f"bash -c 'source {config.env_setup.source_file} && {config.env_setup.setup_function}'",
-                cwd=project_root,
-                timeout=120,
-                check=True,
-                shell=True,
-            )
-            plogger.success("Env setup complete")
-        except Exception as e:
-            plogger.warning(f"Env setup failed: {e}")
 
     # Determine starting milestone
     milestones = config.milestones
@@ -436,4 +426,5 @@ def main() -> None:
         validate_infra(args)
     else:
         parser.print_help()
+        sys.exit(0)
         sys.exit(0)
