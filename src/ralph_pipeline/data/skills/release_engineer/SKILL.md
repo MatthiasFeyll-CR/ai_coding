@@ -30,8 +30,8 @@ Specification Phase (manual — user invokes each skill):
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 
-Execution Phase (automated — pipeline.sh orchestrates per milestone):
-[7]   Pipeline Execution      →  bash pipeline.sh --config pipeline-config.json
+Execution Phase (automated — ralph-pipeline orchestrates per milestone):
+[7]   Pipeline Execution      →  ralph-pipeline run --config pipeline-config.json
       ├─ PRD Writer           →  tasks/prd-mN.json
       ├─ Ralph Execution      →  story-by-story coding
       ├─ QA Engineer          →  docs/08-qa/

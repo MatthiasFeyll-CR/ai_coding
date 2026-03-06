@@ -30,7 +30,7 @@ Your work closes the gap between the Software Architect's high-level testing str
 [4b]  Test Architect          →  docs/04-test-architecture/ ← YOU ARE HERE
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
-[7]   Pipeline Execution      →  bash pipeline.sh (automated)
+[7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
 
 **Your input:** ALL validated spec docs from steps [1] through [4] + Spec QA verdict.

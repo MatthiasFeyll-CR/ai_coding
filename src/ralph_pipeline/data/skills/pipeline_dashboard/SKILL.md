@@ -28,8 +28,8 @@ Specification Phase (manual):
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 
-Execution Phase (automated — pipeline.sh):
-[7]   Pipeline Execution      →  bash pipeline.sh --config pipeline-config.json
+Execution Phase (automated — ralph-pipeline):
+[7]   Pipeline Execution      →  ralph-pipeline run --config pipeline-config.json
       ├─ PRD Writer           →  tasks/prd-mN.json
       ├─ Ralph Execution      →  story-by-story coding
       ├─ QA Engineer          →  docs/08-qa/
@@ -55,9 +55,9 @@ Scan these locations for status information:
 | Arch+AI Integrator | `docs/03-integration/_status.md` | `handoff_ready`, gaps resolved |
 | Spec QA | `docs/04-spec-qa/_status.md` | verdict (PASS/CONDITIONAL PASS/FAIL) |
 | Strategy Planner | `docs/05-milestones/_status.md` | `handoff_ready`, milestone count |
-| Pipeline Configurator | `pipeline-config.json` + `scripts/ralph/handover.json` | Config exists, valid JSON |
+| Pipeline Configurator | `pipeline-config.json` + `.ralph/handover.json` | Config exists, valid JSON |
 | PRD Writer | `tasks/prd-mN.json` | Count of PRDs, which milestones covered |
-| Ralph Execution | `scripts/ralph/progress.txt` | Current story, pass/fail status |
+| Ralph Execution | `.ralph/progress.txt` | Current story, pass/fail status |
 | QA Engineer | `docs/08-qa/_status.md` | Milestone QA results, bugfix cycle count |
 | Merge + Verify | Tags (`mN-complete`) | Which milestones are merged |
 | Spec Reconciler | `docs/05-reconciliation/m*-changes.md` | Which milestones reconciled |
@@ -122,7 +122,7 @@ Produce or update `docs/pipeline-status.md`:
 
 ### Milestone execution status:
 
-- **PRD JSON:** Check if `tasks/prd-mN.json` exists AND if `scripts/ralph/prd.json` has `branchName` matching this milestone (or if archived version exists). Produced by the PRD Writer.
+- **PRD JSON:** Check if `tasks/prd-mN.json` exists AND if `.ralph/prd.json` has `branchName` matching this milestone (or if archived version exists). Produced by the PRD Writer.
 - **Ralph:** Check `progress.txt` or archived progress for story pass rates
 - **QA:** Check `docs/08-qa/` for QA report with verdict
 - **Merged:** Check if `mN-complete` tag exists
@@ -144,7 +144,7 @@ Other skills call this at the end of their handoff phase. When invoked this way:
 If the user asks "what's the status?" or "where are we?", produce a condensed version:
 ```
 Pipeline: [1] DONE → [2] DONE → [3a] DONE / [3b] N/A → [4] DONE → [5] IN PROGRESS (phase 2/6)
-Next: Complete strategy planning, then pipeline configuration, then run pipeline.sh.
+Next: Complete strategy planning, then pipeline configuration, then run ralph-pipeline.
 ```
 
 ---
@@ -170,7 +170,8 @@ I'll scan the pipeline and give you a full status overview.
 Checking:
 - Specialist status files (docs/*/\_status.md)
 - PRD files (tasks/prd-*.json)
-- Ralph state (scripts/ralph/)
+- Ralph state (.ralph/)
+- Pipeline execution state (.ralph/state.json)
 - QA reports (docs/08-qa/)
 - Milestone tags and branches
 

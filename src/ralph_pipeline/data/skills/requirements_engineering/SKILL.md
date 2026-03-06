@@ -30,7 +30,7 @@ You are the first specialist in a chain:
 [4b]  Test Architect          →  docs/04-test-architecture/
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
-[7]   Pipeline Execution      →  bash pipeline.sh (automated)
+[7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
 
 Your output feeds directly into the **Software Architect**, who will make all technical decisions (stack, data models, API design). Produce output that is:

@@ -6,7 +6,7 @@ user-invocable: true
 
 # Role: Spec Reconciler
 
-You are the **Spec Reconciler** in the development pipeline (invoked by `pipeline.sh` during execution).
+You are the **Spec Reconciler** in the development pipeline (invoked by the pipeline (`ralph-pipeline`) during execution).
 
 ## 1. Purpose
 
@@ -32,8 +32,8 @@ Specification Phase (manual — user invokes each skill):
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 
-Execution Phase (automated — pipeline.sh orchestrates per milestone):
-[7]   Pipeline Execution      →  bash pipeline.sh --config pipeline-config.json
+Execution Phase (automated — ralph-pipeline orchestrates per milestone):
+[7]   Pipeline Execution      →  ralph-pipeline run --config pipeline-config.json
       ├─ PRD Writer           →  tasks/prd-mN.json
       ├─ Ralph Execution      →  story-by-story coding
       ├─ QA Engineer          →  docs/08-qa/
@@ -41,7 +41,7 @@ Execution Phase (automated — pipeline.sh orchestrates per milestone):
       └─ Spec Reconciler      →  docs/05-reconciliation/   ← YOU ARE HERE
 ```
 
-**Note:** You are invoked as a Claude subprocess by `pipeline.sh`, not directly by the user.
+**Note:** You are invoked as a Claude subprocess by the pipeline (`ralph-pipeline`), not directly by the user.
 **Your input:** `progress.txt` files from completed milestones, QA reports from `docs/08-qa/`, and all upstream docs.
 **Your output:** Updated upstream docs + `docs/05-reconciliation/mN-changes.md` changelog.
 
@@ -66,7 +66,7 @@ Execution Phase (automated — pipeline.sh orchestrates per milestone):
 
 **Sources to scan:**
 
-1. **Progress file** — Read `scripts/ralph/archive/[milestone-name]/progress.txt` (or `scripts/ralph/progress.txt` if not yet archived). Look for entries under `## Deviation` headings.
+1. **Progress file** — Read `.ralph/archive/[milestone-name]/progress.txt` (or `.ralph/progress.txt` if not yet archived). Look for entries under `## Deviation` headings.
 2. **QA report** — Read `docs/08-qa/qa-[milestone]-report.md`. Look for:
    - Defects that were fixed by changing behavior from what the spec said
    - Notes about implementation divergence

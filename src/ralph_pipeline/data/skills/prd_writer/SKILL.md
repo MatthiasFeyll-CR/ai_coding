@@ -1,12 +1,12 @@
 ---
 name: prd_writer
-description: "PRD Writer for the Ralph pipeline. Converts milestone scope files directly into Ralph-consumable prd.json with user stories and acceptance criteria, plus a context bundle. Produces tasks/prd-mN.json and scripts/ralph/context.md. Triggers on: prd writer, write prd, create prd for milestone, write user stories, prd from milestone, convert prd."
+description: "PRD Writer for the Ralph pipeline. Converts milestone scope files directly into Ralph-consumable prd.json with user stories and acceptance criteria, plus a context bundle. Produces tasks/prd-mN.json and .ralph/context.md. Triggers on: prd writer, write prd, create prd for milestone, write user stories, prd from milestone, convert prd."
 user-invocable: true
 ---
 
 # Role: PRD Writer
 
-You are the **PRD Writer** in the development pipeline (invoked by `pipeline.sh` during execution).
+You are the **PRD Writer** in the development pipeline (invoked by the pipeline (`ralph-pipeline`) during execution).
 
 ## 1. Purpose
 
@@ -32,8 +32,8 @@ Specification Phase (manual — user invokes each skill):
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 
-Execution Phase (automated — pipeline.sh orchestrates per milestone):
-[7]   Pipeline Execution      →  bash pipeline.sh --config pipeline-config.json
+Execution Phase (automated — ralph-pipeline orchestrates per milestone):
+[7]   Pipeline Execution      →  ralph-pipeline run --config pipeline-config.json
       ├─ PRD Writer           →  tasks/prd-mN.json        ← YOU ARE HERE
       ├─ Ralph Execution      →  story-by-story coding
       ├─ QA Engineer          →  docs/08-qa/
@@ -41,9 +41,9 @@ Execution Phase (automated — pipeline.sh orchestrates per milestone):
       └─ Spec Reconciler      →  docs/05-reconciliation/
 ```
 
-**Note:** You are invoked as a Claude subprocess by `pipeline.sh`, not directly by the user.
+**Note:** You are invoked as a Claude subprocess by the pipeline (`ralph-pipeline`), not directly by the user.
 **Your input:** One milestone scope file from `docs/05-milestones/milestone-N.md` + all referenced upstream docs + actual codebase from previous milestones.
-**Your output:** `tasks/prd-mN.json` (Ralph-consumable JSON) + `scripts/ralph/context.md` (context bundle for Ralph).
+**Your output:** `tasks/prd-mN.json` (Ralph-consumable JSON) + `.ralph/context.md` (context bundle for Ralph).
 
 ---
 
@@ -155,9 +155,9 @@ Produce `tasks/prd-mN.json` directly from the milestone scope file and upstream 
 
 Before writing a new `prd.json`:
 
-1. Check if `scripts/ralph/prd.json` already exists.
+1. Check if `.ralph/prd.json` already exists.
 2. If it exists and `branchName` differs from the new one:
-   - Create `scripts/ralph/archive/YYYY-MM-DD-[milestone-name]/`
+   - Create `.ralph/archive/YYYY-MM-DD-[milestone-name]/`
    - Copy current `prd.json` and `progress.txt` to archive
    - Reset `progress.txt`
 3. If it exists and `branchName` matches: overwrite (this is a re-conversion).
@@ -185,7 +185,7 @@ Before writing the JSON, validate that stories are right-sized:
 
 ## 8. Context Bundle Generation
 
-After the JSON PRD is complete, produce a **context bundle** at `scripts/ralph/context.md`. This is a single file that gives Ralph all the upstream context it needs without hunting through `docs/`.
+After the JSON PRD is complete, produce a **context bundle** at `.ralph/context.md`. This is a single file that gives Ralph all the upstream context it needs without hunting through `docs/`.
 
 ### What Goes In the Bundle
 
@@ -195,7 +195,7 @@ Extract and compile these sections from upstream docs, **only for content refere
 2. **Design specs** — component specs, wireframe descriptions referenced in story notes. Copy relevant sections.
 3. **AI specs** (if applicable) — system prompts, tool schemas, model config referenced in story notes.
 4. **Test specs** — test cases from `docs/04-test-architecture/test-matrix.md` assigned to this milestone's stories. Include the full test case definitions, not just IDs. Ralph writes these tests BEFORE implementing the feature, so each test case must include: test ID, layer, description, input, and expected output — enough detail to write a failing test without seeing the implementation.
-5. **Codebase patterns** — extract only the `## Codebase Patterns` section from archived progress files (`scripts/ralph/archive/*/progress.txt`). If no archives exist, omit this section.
+5. **Codebase patterns** — extract only the `## Codebase Patterns` section from archived progress files (`.ralph/archive/*/progress.txt`). If no archives exist, omit this section.
 6. **Codebase snapshot** — for every file path listed in story Notes `Files:` fields:
    - Include a project file tree (top 3 levels)
    - If the file already exists in the codebase, include its current contents (or first 200 lines if very large)
@@ -261,7 +261,7 @@ Extract and compile these sections from upstream docs, **only for content refere
 2. **Verbatim extraction.** Copy upstream doc sections exactly — don't summarize or rephrase.
 3. **Codebase patterns only.** From progress.txt archives, include only the `## Codebase Patterns` section, not per-story logs.
 4. **Codebase snapshot is selective.** Only include files from story Notes `Files:` fields. For large files (>200 lines), include the first 200 lines with a note.
-5. **Overwrite per milestone.** Each milestone gets a fresh `scripts/ralph/context.md`. No accumulation.
+5. **Overwrite per milestone.** Each milestone gets a fresh `.ralph/context.md`. No accumulation.
 
 ### Context Weight Reporting
 
@@ -292,9 +292,9 @@ This feeds into the Spec Reconciler after each milestone.
 
 ## 10. Handoff
 
-After producing `tasks/prd-mN.json` and `scripts/ralph/context.md`:
+After producing `tasks/prd-mN.json` and `.ralph/context.md`:
 
 1. Inform the user that the JSON PRD and context bundle are ready.
 2. Report: milestone name, story count, context weight, any size warnings, any deviation flags.
-3. The PRD is now ready for Ralph execution (handled automatically by `pipeline.sh`).
+3. The PRD is now ready for Ralph execution (handled automatically by the pipeline).
 4. If writing PRDs for multiple milestones in batch: proceed to the next milestone scope file and repeat the process.

@@ -28,7 +28,7 @@ You do NOT introduce new features, requirements, or design decisions. You only r
 [4b]  Test Architect          →  docs/04-test-architecture/
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
-[7]   Pipeline Execution      →  bash pipeline.sh (automated)
+[7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
 
 **Your input:** Read ALL files in `docs/02-architecture/` and `docs/03-ai/`. Also read `docs/03-ai/_status.md` for the Architecture Sync Gaps list.

@@ -36,11 +36,11 @@ After this step, the Pipeline Configurator translates your milestones into a mac
 [4b]  Test Architect          →  docs/04-test-architecture/
 [5]   Strategy Planner        →  docs/05-milestones/      ← YOU ARE HERE
 [6]   Pipeline Configurator   →  pipeline-config.json
-[7]   Pipeline Execution      →  bash pipeline.sh (automated)
+[7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
 
 **Your input:** All validated spec docs + Test Architect handover (or Spec QA handover if test architecture was skipped).
-**Your output:** `docs/05-milestones/` — consumed by Pipeline Configurator, then by pipeline.sh for PRD generation.
+**Your output:** `docs/05-milestones/` — consumed by Pipeline Configurator, then by the pipeline for PRD generation.
 
 ---
 
@@ -200,7 +200,7 @@ M1 → M2 → M3 → M4 → ...
 
 **Entry:** Phase 3 complete.
 
-**Goal:** Produce one detailed scope file per milestone. Each is self-contained — the PRD Writer (invoked by pipeline.sh) should be able to create a PRD from it without reading other milestone files.
+**Goal:** Produce one detailed scope file per milestone. Each is self-contained — the PRD Writer (invoked by the pipeline (`ralph-pipeline`)) should be able to create a PRD from it without reading other milestone files.
 
 **Output:** One `docs/05-milestones/milestone-N.md` per milestone.
 

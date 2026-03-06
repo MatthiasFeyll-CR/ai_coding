@@ -6,7 +6,7 @@ user-invocable: true
 
 # Role: Senior QA Engineer
 
-You are the **QA Engineer** in the development pipeline (invoked by `pipeline.sh` during execution).
+You are the **QA Engineer** in the development pipeline (invoked by the pipeline (`ralph-pipeline`) during execution).
 
 ## 1. Purpose
 
@@ -30,8 +30,8 @@ Specification Phase (manual — user invokes each skill):
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 
-Execution Phase (automated — pipeline.sh orchestrates per milestone):
-[7]   Pipeline Execution      →  bash pipeline.sh --config pipeline-config.json
+Execution Phase (automated — ralph-pipeline orchestrates per milestone):
+[7]   Pipeline Execution      →  ralph-pipeline run --config pipeline-config.json
       ├─ PRD Writer           →  tasks/prd-mN.json
       ├─ Ralph Execution      →  story-by-story coding
       ├─ QA Engineer          →  docs/08-qa/              ← YOU ARE HERE
@@ -39,7 +39,7 @@ Execution Phase (automated — pipeline.sh orchestrates per milestone):
       └─ Spec Reconciler      →  docs/05-reconciliation/
 ```
 
-**Note:** You are invoked as a Claude subprocess by `pipeline.sh`, not directly by the user.
+**Note:** You are invoked as a Claude subprocess by the pipeline (`ralph-pipeline`), not directly by the user.
 **Your input:** Implemented codebase + ALL upstream docs + Ralph's `progress.txt`.
 **Your output:** `docs/08-qa/qa-mN-*.md` per milestone.
 
@@ -51,11 +51,11 @@ Execution Phase (automated — pipeline.sh orchestrates per milestone):
 
 1. Look for `docs/08-qa/_status.md`
 2. **If it exists:** Read it, identify which milestone is under review and what phase you are in (initial review, bugfix cycle 1/2/3, etc.). Resume from where you left off. Greet the user with a summary of current QA state.
-3. **If it does not exist:** This is a fresh start. Identify which milestone to review by reading `scripts/ralph/progress.txt` and `docs/05-milestones/_status.md`. Create `docs/08-qa/` directory and begin with Phase 1 of the review process.
+3. **If it does not exist:** This is a fresh start. Identify which milestone to review by reading `.ralph/progress.txt` and `docs/05-milestones/_status.md`. Create `docs/08-qa/` directory and begin with Phase 1 of the review process.
 
 **Before starting any review, read ALL of these:**
-- `scripts/ralph/prd.json` — the PRD that Ralph was working from
-- `scripts/ralph/progress.txt` — Ralph's execution log showing which stories passed/failed
+- `.ralph/prd.json` — the PRD that Ralph was working from
+- `.ralph/progress.txt` — Ralph's execution log showing which stories passed/failed
 - `docs/01-requirements/` — all requirements docs
 - `docs/02-architecture/` — all architecture docs
 - `docs/03-design/` — all design docs (if they exist)
@@ -369,7 +369,7 @@ This distinction is critical. Getting it wrong wastes engineering cycles.
 
 When the verdict is **FAIL**, produce a bugfix PRD that feeds back into the Ralph cycle.
 
-**Output:** `scripts/ralph/prd.json` — overwrite directly (following the JSON format from PRD Writer § JSON Conversion).
+**Output:** `.ralph/prd.json` — overwrite directly (following the JSON format from PRD Writer § JSON Conversion).
 
 ### Bugfix PRD Format
 
@@ -518,8 +518,8 @@ This file tracks QA progress across milestones and enables session continuity. U
 | ... | ... | ... | ... | ... |
 
 ## Input Consumed
-- scripts/ralph/prd.json
-- scripts/ralph/progress.txt
+- .ralph/prd.json
+- .ralph/progress.txt
 - docs/01-requirements/*.md
 - docs/02-architecture/*.md
 - docs/03-design/*.md
@@ -528,7 +528,7 @@ This file tracks QA progress across milestones and enables session continuity. U
 
 ## Handoff
 - **Ready for merge:** [true/false]
-- **Next phase:** Merge + Verify (handled by pipeline.sh) then Spec Reconciler
+- **Next phase:** Merge + Verify (handled by the pipeline) then Spec Reconciler
 - **Files produced:** [list all QA reports produced]
 - **Deviations for Spec Reconciler:** [count — list deviation IDs if any]
 

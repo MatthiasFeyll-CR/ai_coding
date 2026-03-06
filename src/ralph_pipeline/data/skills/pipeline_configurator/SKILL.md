@@ -1,6 +1,6 @@
 ---
 name: pipeline_configurator
-description: "Pipeline Configurator — the final planning step before automated execution. Reads the strategy planner output and produces pipeline-config.json and Ralph agent instructions. After this step, 'bash pipeline.sh --config pipeline-config.json' runs the entire project unattended. Triggers on: pipeline configurator, configure pipeline, setup pipeline, prepare pipeline, generate config."
+description: "Pipeline Configurator — the final planning step before automated execution. Reads the strategy planner output and produces pipeline-config.json and Ralph agent instructions. After this step, 'ralph-pipeline run --config pipeline-config.json' runs the entire project unattended. Triggers on: pipeline configurator, configure pipeline, setup pipeline, prepare pipeline, generate config."
 user-invocable: true
 ---
 
@@ -10,13 +10,13 @@ You are specialist **[6] Pipeline Configurator** in the development pipeline.
 
 ## 1. Purpose
 
-You are the final step before fully automated execution. Your goal is to read the Strategy Planner's output and produce everything the generic `pipeline.sh` script needs to build the entire project unattended:
+You are the final step before fully automated execution. Your goal is to read the Strategy Planner's output and produce everything the `ralph-pipeline` tool needs to build the entire project unattended:
 
 1. **`pipeline-config.json`** — Machine-readable project config (milestones, gate checks, paths)
-2. **`scripts/ralph/CLAUDE.md`** — Ralph agent instructions tailored to this project
-3. **Verification** — Validate the config is correct and pipeline.sh can parse it
+2. **`.ralph/CLAUDE.md`** — Ralph agent instructions tailored to this project
+3. **Verification** — Validate the config is correct and ralph-pipeline can parse it
 
-After this step, the user runs `bash pipeline.sh --config pipeline-config.json` and the pipeline executes all milestones sequentially.
+After this step, the user runs `ralph-pipeline run --config pipeline-config.json` and the pipeline executes all milestones sequentially.
 
 ---
 
@@ -32,11 +32,11 @@ After this step, the user runs `bash pipeline.sh --config pipeline-config.json` 
 [4b]  Test Architect          →  docs/04-test-architecture/
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json     ← YOU ARE HERE
-[7]   Pipeline Execution      →  bash pipeline.sh (automated)
+[7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
 
 **Your input:** Strategy Planner handover (`docs/05-milestones/handover.json`) + all upstream docs.
-**Your output:** `pipeline-config.json` + `scripts/ralph/CLAUDE.md`
+**Your output:** `pipeline-config.json` + `.ralph/CLAUDE.md`
 
 ---
 
@@ -57,7 +57,7 @@ After this step, the user runs `bash pipeline.sh --config pipeline-config.json` 
 
 ### 4.1 pipeline-config.json
 
-This is the primary output. It replaces all hardcoded values in `pipeline.sh`.
+This is the primary output. It replaces all hardcoded values in the pipeline.
 
 ```json
 {
@@ -72,12 +72,12 @@ This is the primary output. It replaces all hardcoded values in `pipeline.sh`.
   "paths": {
     "docs_dir": "docs",
     "tasks_dir": "tasks",
-    "scripts_dir": "scripts/ralph",
+    "scripts_dir": ".ralph",
     "skills_dir": "~/.claude/skills",
     "qa_dir": "docs/08-qa",
     "reconciliation_dir": "docs/05-reconciliation",
     "milestones_dir": "docs/05-milestones",
-    "archive_dir": "scripts/ralph/archive"
+    "archive_dir": ".ralph/archive"
   },
 
   "milestones": [
@@ -163,8 +163,12 @@ This is the primary output. It replaces all hardcoded values in `pipeline.sh`.
     "setup_command": "docker compose -f docker-compose.test.yml up -d postgres redis && for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U myuser -q 2>/dev/null && exit 0; sleep 2; done; echo 'Timed out waiting for PostgreSQL'; exit 1",
     "teardown_command": "docker compose -f docker-compose.test.yml down --volumes --remove-orphans",
     "force_teardown_command": "docker compose -f docker-compose.test.yml kill && docker compose -f docker-compose.test.yml down --volumes --remove-orphans --timeout 5; docker compose -f docker-compose.test.yml rm -f -v",
-    "check_command": "docker compose -f docker-compose.test.yml ps -q 2>/dev/null | grep -q .",
     "setup_timeout_seconds": 120,
+
+    "services": [
+      {"name": "postgres", "type": "tcp", "host": "localhost", "port": 5432, "startup_timeout": 30},
+      {"name": "redis", "type": "tcp", "host": "localhost", "port": 6379, "startup_timeout": 15}
+    ],
 
     "tier1": {
       "compose_file": "docker-compose.test.yml",
@@ -237,7 +241,6 @@ This is the primary output. It replaces all hardcoded values in `pipeline.sh`.
    - `setup_command`: Starts dependency services with readiness waits. Must use host-side health checks (see NEVER use docker exec rule below). Dependency containers are removed and recreated with fresh volumes each time.
    - `teardown_command`: Graceful shutdown. Must remove all data/volumes (`--volumes --remove-orphans`).
    - `force_teardown_command`: Forceful cleanup when graceful fails.
-   - `check_command`: Returns 0 if infra running, non-zero otherwise.
    - `setup_timeout_seconds`: Default 120.
 
    **Tier 1 (Ralph per-story, fast feedback)** — `test_execution.tier1` object:
@@ -258,7 +261,7 @@ This is the primary output. It replaces all hardcoded values in `pipeline.sh`.
      - `condition`: Shell condition — skip this environment if not met (e.g., `test -f requirements.txt`).
      - `timeout_seconds`: Max time for test command. Default 300.
 
-   **Key Tier 1 behaviors (enforced by pipeline.sh):**
+   **Key Tier 1 behaviors (enforced by the pipeline):**
    - Source code is bind-mounted — code changes are immediately visible without image rebuild.
    - Test images are only rebuilt when `rebuild_trigger_files` content changes (hash-based detection).
    - Dependency services (DB, cache, broker) use pre-built images — never rebuilt, but containers + volumes are removed and recreated before EVERY test run for clean state.
@@ -282,13 +285,13 @@ This is the primary output. It replaces all hardcoded values in `pipeline.sh`.
    - **Distinguishing buildable vs external services:** Inspect docker-compose (or similar) to classify each service. Services with a `build:` context pointing to project source code are application services — they need rebuilding. Services using only an `image:` directive (e.g., `postgres:16`, `redis:7-alpine`) are external infrastructure — they must NOT be in `build_command`. **If you are uncertain whether a service needs rebuilding, ask the user during the configuration phase.** Never guess — the user knows their project.
    - **NEVER use `docker compose exec` or `docker exec` in any infrastructure command.** These commands manage TTY signals and get suspended (SIGTSTP) when run inside the pipeline's `timeout bash -c` wrapper, causing the pipeline to hang indefinitely. Instead, use host-side tools that connect to exposed ports (e.g., `pg_isready -h localhost -p 5432` instead of `docker compose exec postgresql pg_isready`). For readiness checks, use bounded retry loops: `for i in $(seq 1 N); do <check> && exit 0; sleep 2; done; exit 1`.
    - **Use `docker compose run --rm` for test execution**, NOT `docker compose exec`. The `run --rm` command starts a fresh container, runs the command, and removes the container — it works correctly in non-interactive pipeline contexts.
-   - **Verification requirement:** After generating the commands, you MUST test them by running them in order: `build_command`, `setup_command`, `check_command` (should return 0), `teardown_command`, `check_command` (should return non-zero), then `force_teardown_command`. Also verify Tier 1: `tier1.teardown_command`, `tier1.setup_command`, then each environment's `test_command`. Fix any issues before saving the config.
+   - **Verification requirement:** After generating the commands, you MUST test them by running them in order: `build_command`, `setup_command`, `teardown_command`, then `force_teardown_command`. Also verify Tier 1: `tier1.teardown_command`, `tier1.setup_command`, then each environment's `test_command`. Fix any issues before saving the config.
 5. **env_setup:** Ask the user if they have a shell setup script (like Azure endpoint config). If yes, set `source_file` and `setup_function`.
 6. **paths:** Use standard conventions, confirm with user if non-standard.
 
-### 4.2 scripts/ralph/CLAUDE.md and scripts/ralph/prompt.md
+### 4.2 .ralph/CLAUDE.md
 
-Ralph agent instructions, tailored to this project. Read the existing templates in `scripts/ralph/CLAUDE.md` (for claude tool) and `scripts/ralph/prompt.md` (for amp tool), then customize **both** with project-specific values:
+Ralph agent instructions, tailored to this project. Read the existing template in `.ralph/CLAUDE.md`, then customize with project-specific values:
 
 **What to customize:**
 
@@ -327,7 +330,7 @@ Ralph agent instructions, tailored to this project. Read the existing templates 
 - The task workflow steps (pipeline manages branches, Ralph implements stories)
 - The progress report format
 - The stop condition (`<promise>COMPLETE</promise>`)
-- The self-protection note ("Do NOT modify scripts/ralph/CLAUDE.md")
+- The self-protection note ("Do NOT modify .ralph/CLAUDE.md")
 - The patterns consolidation section
 
 ## 5. Verification
@@ -348,9 +351,9 @@ Before finalizing, verify:
 
 After config is generated and verified:
 
-**`pipeline-config.json`** is placed in the project root (or `scripts/ralph/`).
+**`pipeline-config.json`** is placed in the project root.
 
-**Produce `scripts/ralph/handover.json`:**
+**Produce `.ralph/handover.json`:**
 
 ```json
 {
@@ -360,22 +363,22 @@ After config is generated and verified:
   "summary": "Pipeline configured. [N] milestones, sequential execution. Config at pipeline-config.json.",
   "files_produced": [
     "pipeline-config.json",
-    "scripts/ralph/CLAUDE.md"
+    ".ralph/CLAUDE.md"
   ],
   "next_commands": [
     {
-      "skill": "pipeline.sh",
-      "command": "bash scripts/ralph/pipeline.sh --config pipeline-config.json",
+      "skill": "ralph-pipeline",
+      "command": "ralph-pipeline run --config pipeline-config.json",
       "description": "Execute the full pipeline — all milestones, fully automated"
     },
     {
-      "skill": "pipeline.sh",
-      "command": "bash scripts/ralph/pipeline.sh --config pipeline-config.json --dry-run",
+      "skill": "ralph-pipeline",
+      "command": "ralph-pipeline run --config pipeline-config.json --dry-run",
       "description": "Dry run — verify the pipeline plan without executing"
     },
     {
-      "skill": "pipeline.sh",
-      "command": "bash scripts/ralph/pipeline.sh --config pipeline-config.json --milestone 1",
+      "skill": "ralph-pipeline",
+      "command": "ralph-pipeline run --config pipeline-config.json --milestone 1",
       "description": "Execute only Milestone 1 (Foundation) to test the pipeline"
     }
   ],
@@ -383,7 +386,7 @@ After config is generated and verified:
     "Run --dry-run first to verify the pipeline plan",
     "The pipeline generates PRDs automatically per milestone",
     "Pipeline pauses only on critical errors that require manual intervention",
-    "Resume after interruption: bash pipeline.sh --config pipeline-config.json --resume"
+    "Resume after interruption: ralph-pipeline run --config pipeline-config.json --resume"
   ]
 }
 ```
@@ -392,13 +395,13 @@ After config is generated and verified:
 
 ## 7. Operational Rules
 
-1. **Config must be complete.** pipeline.sh reads ONLY pipeline-config.json — it should contain everything needed.
+1. **Config must be complete.** ralph-pipeline reads ONLY pipeline-config.json — it should contain everything needed.
 2. **Ask about env setup.** If the project uses Azure, custom endpoints, or other env config, the user must tell you so you can set `env_setup`.
 3. **Validate before saving.** Always run the verification checklist.
 4. **Gate checks must be realistic.** Don't add gate checks for tools that aren't in the project's tech stack.
-5. **Ralph instructions must be project-specific.** Don't leave generic placeholders — fill in actual quality check commands from gate_checks AND test_execution. Customize BOTH `CLAUDE.md` and `prompt.md`.
+5. **Ralph instructions must be project-specific.** Don't leave generic placeholders — fill in actual quality check commands from gate_checks AND test_execution. Customize `.ralph/CLAUDE.md`.
 6. **Test execution is mandatory and containerized.** Every project must have `test_execution.test_command` AND `test_execution.tier1.environments` configured. All test commands must run inside Docker containers (`docker compose run --rm`). Never configure test commands that execute on the host. The pipeline enforces this at both tiers: Tier 1 (Ralph per-story) and Tier 2 (post-merge). If the test-plan.md specifies a test runner, wrap it in a Docker compose run command. Also determine which tech stacks exist and create one Tier 1 environment per distinct runtime.
-8. **Test infrastructure must be declared and verified.** If any tests require external services (databases, caches, message brokers), you must configure all infra commands: `build_command`, `setup_command`, `teardown_command`, `force_teardown_command`, and `check_command`. The pipeline is technology-agnostic — it runs these commands as-is without appending flags or assuming Docker. You MUST test the full lifecycle (build → setup → check → teardown → force_teardown) before saving the config. Broken infrastructure commands are the #1 cause of wasted pipeline hours.
+8. **Test infrastructure must be declared and verified.** If any tests require external services (databases, caches, message brokers), you must configure all infra commands: `build_command`, `setup_command`, `teardown_command`, and `force_teardown_command`. Also configure `services` array for health checks. The pipeline is technology-agnostic — it runs these commands as-is without appending flags or assuming Docker. You MUST test the full lifecycle (build → setup → teardown → force_teardown) before saving the config. Broken infrastructure commands are the #1 cause of wasted pipeline hours.
 9. **Application images must be rebuilt without cache.** The `build_command` must use `--no-cache` (or equivalent) to guarantee tests run the latest code. Only target services with custom build steps — never rebuild external images like postgres or redis. If you're unsure which services are buildable, **ask the user during configuration** — do not guess.
 10. **Confirm with user.** Show the generated config summary and get approval before finalizing.
 
@@ -406,7 +409,7 @@ After config is generated and verified:
 
 ## 8. First Message
 
-> I'm your Pipeline Configurator. I'll translate the milestone strategy into a machine-readable config so `pipeline.sh` can run the entire build automatically.
+> I'm your Pipeline Configurator. I'll translate the milestone strategy into a machine-readable config so `ralph-pipeline` can run the entire build automatically.
 >
 > Let me read the Strategy Planner's handover.
 >

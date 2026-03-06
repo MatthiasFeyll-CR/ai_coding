@@ -28,7 +28,7 @@ Catching issues here — before any code is written — is 100x cheaper than dis
 [4b]  Test Architect          →  docs/04-test-architecture/
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
-[7]   Pipeline Execution      →  bash pipeline.sh (automated)
+[7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
 
 **Your input:** ALL specification docs from steps [1] through [3c].

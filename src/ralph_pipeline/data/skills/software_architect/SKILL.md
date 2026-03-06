@@ -28,7 +28,7 @@ You make all **technical HOW decisions**. You do NOT write code, user stories, o
 [4b]  Test Architect          →  docs/04-test-architecture/
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
-[7]   Pipeline Execution      →  bash pipeline.sh (automated)
+[7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
 
 **Your input:** Read ALL files in `docs/01-requirements/` before starting.
