@@ -34,7 +34,7 @@ vi.mock('@/api/client', () => ({
     getTokens: vi.fn().mockResolvedValue({
       data: { total: { input_tokens: 0, output_tokens: 0, cost_usd: 0 }, by_milestone: {}, history: [] },
     }),
-    getMilestones: vi.fn().mockResolvedValue({ data: [] }),
+    getMilestones: vi.fn().mockResolvedValue({ data: { milestones: [], max_bugfix_cycles: 3 } }),
     start: vi.fn(),
     stop: vi.fn(),
     resume: vi.fn(),

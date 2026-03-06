@@ -1,5 +1,6 @@
 import type {
     ExecutionLog,
+    MilestonesResponse,
     PipelineState,
     PreCheckResult,
     Project,
@@ -55,7 +56,7 @@ export const pipelineApi = {
   getTokens: (projectId: number) =>
     api.get<TokenUsage>(`/pipeline/${projectId}/tokens`),
   getMilestones: (projectId: number) =>
-    api.get(`/pipeline/${projectId}/milestones`),
+    api.get<MilestonesResponse>(`/pipeline/${projectId}/milestones`),
 };
 
 // Files

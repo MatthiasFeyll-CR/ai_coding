@@ -1,11 +1,13 @@
 import { useAppStore } from '@/store/appStore';
-import { BellIcon, MoonIcon, SearchIcon, SunIcon } from 'lucide-react';
+import { MoonIcon, SearchIcon, SunIcon } from 'lucide-react';
+import { ConnectionIndicator } from './ConnectionIndicator';
+import { NotificationCenter } from './NotificationCenter';
 
 export function TopBar() {
   const { theme, setTheme } = useAppStore();
 
   return (
-    <header className="h-16 bg-bg-secondary border-b border-border-subtle px-6 flex items-center justify-between">
+    <header className="h-16 bg-bg-secondary/70 backdrop-blur-xl border-b border-white/[0.06] px-6 flex items-center justify-between">
       {/* Search */}
       <div className="flex-1 max-w-xl">
         <div className="relative">
@@ -20,11 +22,11 @@ export function TopBar() {
 
       {/* Right actions */}
       <div className="flex items-center space-x-4">
+        {/* Connection status */}
+        <ConnectionIndicator />
+
         {/* Notifications */}
-        <button className="relative p-2 hover:bg-bg-hover rounded-lg transition-colors">
-          <BellIcon className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-accent-cyan rounded-full"></span>
-        </button>
+        <NotificationCenter />
 
         {/* Theme toggle */}
         <button

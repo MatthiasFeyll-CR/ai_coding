@@ -1,25 +1,25 @@
-import { projectsApi } from '@/api/client';
+import { pipelineApi, projectsApi } from '@/api/client';
 import { InfrastructureTab } from '@/components/infrastructure/InfrastructureTab';
 import { SetupFlow } from '@/components/infrastructure/SetupFlow';
 import { ControlPanel } from '@/components/pipeline/ControlPanel';
-import { FSMVisualization } from '@/components/pipeline/FSMVisualization';
-import { LiveLogs } from '@/components/pipeline/LiveLogs';
-import { MilestoneList } from '@/components/pipeline/MilestoneList';
+import { MilestoneDetail } from '@/components/pipeline/MilestoneDetail';
+import { MilestoneFlow } from '@/components/pipeline/MilestoneFlow';
 import { TokenDashboard } from '@/components/pipeline/TokenDashboard';
 import { Badge } from '@/components/shared/Badge';
 import { Card } from '@/components/shared/Card';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAppStore } from '@/store/appStore';
 import { useQuery } from '@tanstack/react-query';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-    ActivityIcon,
-    BeakerIcon,
-    DollarSignIcon,
-    FolderOpenIcon,
-    GitBranchIcon,
-    SettingsIcon,
+  ActivityIcon,
+  BeakerIcon,
+  DollarSignIcon,
+  FolderOpenIcon,
+  GitBranchIcon,
+  SettingsIcon,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 type TabId = 'state' | 'git' | 'costs' | 'tests' | 'infrastructure';
@@ -67,6 +67,39 @@ export function DashboardPage() {
     refetchInterval: 5000,
   });
 
+  // Fetch enriched milestones (config + state)
+  const { data: milestonesData } = useQuery({
+    queryKey: ['milestones', activeProject?.id],
+    queryFn: () => pipelineApi.getMilestones(activeProject!.id).then((res) => res.data),
+    enabled: !!activeProject?.id && !!activeProject?.is_setup,
+    refetchInterval: 5000,
+  });
+
+  const milestones = milestonesData?.milestones ?? [];
+  const maxBugfixCycles = milestonesData?.max_bugfix_cycles ?? 3;
+
+  const [selectedMilestoneId, setSelectedMilestoneId] = useState<number | null>(null);
+
+  // Auto-select the next milestone to process (or the current running one)
+  const effectiveMilestoneId = useMemo(() => {
+    if (selectedMilestoneId !== null) return selectedMilestoneId;
+    if (milestones.length === 0) return null;
+
+    // Find the running milestone or the first non-completed one
+    const running = milestones.find(
+      (m) => m.started_at && !m.completed_at && m.phase !== 'pending'
+    );
+    if (running) return running.id;
+
+    const nextPending = milestones.find((m) => !m.completed_at);
+    if (nextPending) return nextPending.id;
+
+    // All complete — show the last one
+    return milestones[milestones.length - 1].id;
+  }, [selectedMilestoneId, milestones]);
+
+  const selectedMilestone = milestones.find((m) => m.id === effectiveMilestoneId) ?? null;
+
   if (!activeProject) {
     return (
       <EmptyState
@@ -97,11 +130,6 @@ export function DashboardPage() {
         <ControlPanel />
       </div>
 
-      {/* FSM Visualization */}
-      <Card title="Pipeline Progress">
-        <FSMVisualization state={pipelineState} />
-      </Card>
-
       {/* Tabs */}
       <div className="border-b border-border-subtle">
         <div className="flex space-x-1">
@@ -123,51 +151,48 @@ export function DashboardPage() {
       </div>
 
       {/* Tab Content */}
-      <div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.18, ease: 'easeInOut' }}
+          className="flex-1"
+        >
         {activeTab === 'state' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-6">
-              <Card title="Milestones">
-                <MilestoneList projectId={activeProject.id} />
-              </Card>
-
-              <Card title="Current State">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-secondary">Status</span>
-                    <Badge
-                      variant={
-                        pipelineState?.status === 'running'
-                          ? 'info'
-                          : pipelineState?.status === 'completed'
-                          ? 'success'
-                          : pipelineState?.status === 'failed'
-                          ? 'error'
-                          : 'default'
-                      }
-                    >
-                      {pipelineState?.status || 'idle'}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-secondary">Phase</span>
-                    <span className="font-mono text-sm">
-                      {pipelineState?.current_phase || 'N/A'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-secondary">Milestone</span>
-                    <span className="font-mono text-sm">
-                      {pipelineState?.current_milestone || 'N/A'}
-                    </span>
-                  </div>
-                </div>
-              </Card>
+          <div className="flex gap-0 h-[calc(100vh-220px)] rounded-xl border border-white/[0.06] overflow-hidden">
+            {/* Left panel — Milestone Flow (30%) */}
+            <div className="w-[30%] border-r border-white/[0.06] flex flex-col bg-bg-secondary/50 backdrop-blur-xl">
+              <div className="section-header">
+                <ActivityIcon className="w-4 h-4 text-accent-green" />
+                <h3>Milestones</h3>
+              </div>
+              <div className="flex-1">
+                <MilestoneFlow
+                  milestones={milestones}
+                  selectedMilestoneId={effectiveMilestoneId}
+                  pipelineStatus={activeProject.status}
+                  onSelectMilestone={setSelectedMilestoneId}
+                />
+              </div>
             </div>
 
-            <Card title="Live Logs">
-              <LiveLogs projectId={activeProject.id} />
-            </Card>
+            {/* Right panel — Milestone Detail (70%) */}
+            <div className="w-[70%] flex flex-col bg-bg-secondary/30 backdrop-blur-xl">
+              {selectedMilestone ? (
+                <MilestoneDetail
+                  projectId={activeProject.id}
+                  milestone={selectedMilestone}
+                  maxBugfixCycles={maxBugfixCycles}
+                  pipelineStatus={activeProject.status}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-text-muted">
+                  <p>Select a milestone to view details</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -244,7 +269,8 @@ export function DashboardPage() {
         {activeTab === 'infrastructure' && (
           <InfrastructureTab projectId={activeProject.id} />
         )}
-      </div>
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

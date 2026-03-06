@@ -39,6 +39,18 @@ export interface MilestoneState {
   completed_at: string | null;
 }
 
+export interface MilestoneInfo extends MilestoneState {
+  name: string;
+  slug: string;
+  stories: number;
+  dependencies: number[];
+}
+
+export interface MilestonesResponse {
+  milestones: MilestoneInfo[];
+  max_bugfix_cycles: number;
+}
+
 export interface ExecutionLog {
   id: number;
   project_id: number;
@@ -160,5 +172,10 @@ export interface WebSocketEvents {
     message: string;
     type?: 'progress' | 'assistant' | 'assistant_delta' | 'tool_use' | 'result' | 'error' | 'info' | 'output';
     timestamp?: string;
+  };
+  cancel_ack: {
+    project_id: number;
+    status: 'ok' | 'not_found';
+    message: string;
   };
 }

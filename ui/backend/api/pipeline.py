@@ -134,18 +134,70 @@ def get_tokens(project_id):
 
 @bp.route("/<int:project_id>/milestones", methods=["GET"])
 def get_milestones(project_id):
-    """Get milestone status from state."""
+    """Get milestone status enriched with config data (name, slug)."""
     project = Project.query.get_or_404(project_id)
     state_path = Path(project.root_path) / ".ralph" / "state.json"
+    config_path = Path(project.config_path)
+
+    # Load config for milestone names/slugs and qa settings
+    config_milestones = {}
+    max_bugfix_cycles = 3  # default
+    if config_path.exists():
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+            for m in config.get("milestones", []):
+                config_milestones[m["id"]] = {
+                    "name": m.get("name", f"Milestone {m['id']}"),
+                    "slug": m.get("slug", f"m{m['id']}"),
+                    "stories": m.get("stories", 0),
+                    "dependencies": m.get("dependencies", []),
+                }
+            max_bugfix_cycles = config.get("qa", {}).get("max_bugfix_cycles", 3)
+        except (json.JSONDecodeError, KeyError):
+            pass
 
     if not state_path.exists():
-        return jsonify([])
+        # Return config-only milestones if no state yet
+        milestones = []
+        for m_id, m_info in sorted(config_milestones.items()):
+            milestones.append(
+                {
+                    "id": m_id,
+                    "name": m_info["name"],
+                    "slug": m_info["slug"],
+                    "stories": m_info["stories"],
+                    "dependencies": m_info["dependencies"],
+                    "phase": "pending",
+                    "bugfix_cycle": 0,
+                    "test_fix_cycle": 0,
+                    "started_at": None,
+                    "completed_at": None,
+                }
+            )
+        return jsonify(
+            {"milestones": milestones, "max_bugfix_cycles": max_bugfix_cycles}
+        )
 
     with open(state_path, "r") as f:
         state = json.load(f)
 
     milestones = []
     for m_id, m_state in state.get("milestones", {}).items():
-        milestones.append({"id": int(m_id), **m_state})
+        int_id = int(m_id)
+        cfg = config_milestones.get(int_id, {})
+        milestones.append(
+            {
+                "id": int_id,
+                "name": cfg.get("name", f"Milestone {int_id}"),
+                "slug": cfg.get("slug", f"m{int_id}"),
+                "stories": cfg.get("stories", 0),
+                "dependencies": cfg.get("dependencies", []),
+                **m_state,
+            }
+        )
 
-    return jsonify(milestones)
+    # Sort by id
+    milestones.sort(key=lambda m: m["id"])
+
+    return jsonify({"milestones": milestones, "max_bugfix_cycles": max_bugfix_cycles})

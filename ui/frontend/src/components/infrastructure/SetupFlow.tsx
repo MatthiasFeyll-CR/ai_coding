@@ -13,6 +13,7 @@ import {
   MessageSquareIcon,
   PlayIcon,
   SettingsIcon,
+  SquareIcon,
   WrenchIcon,
   XCircleIcon,
 } from 'lucide-react';
@@ -33,10 +34,13 @@ export function SetupFlow({ project }: SetupFlowProps) {
   const [configuring, setConfiguring] = useState(project.status === 'configuring');
   const [progress, setProgress] = useState<ProgressEntry[]>([]);
   const [conversationLog, setConversationLog] = useState<ProgressEntry[]>([]);
+  const [terminalStatus, setTerminalStatus] = useState<'complete' | 'error' | null>(null);
   const queryClient = useQueryClient();
-  const { subscribe } = useWebSocket(project.id);
+  const { subscribe, emit } = useWebSocket(project.id);
   const { setActiveProject } = useAppStore();
   const logEndRef = useRef<HTMLDivElement>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
 
   // Re-fetch the project from the API and update the store so is_setup is current
   const refreshActiveProject = useCallback(async () => {
@@ -56,10 +60,35 @@ export function SetupFlow({ project }: SetupFlowProps) {
     select: (res) => res.data,
   });
 
-  // Auto-scroll conversation log
+  // Auto-scroll conversation log (only when user hasn't scrolled up)
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll) {
+      logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [conversationLog, autoScroll]);
+
+  // Detect manual scroll to disable auto-scroll
+  const handleLogScroll = useCallback(() => {
+    const el = logContainerRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    setAutoScroll(atBottom);
+  }, []);
+
+  // Track terminal status from conversation events
+  useEffect(() => {
+    const lastEntry = conversationLog[conversationLog.length - 1];
+    if (lastEntry?.type === 'result') {
+      setTerminalStatus('complete');
+    } else if (lastEntry?.type === 'error') {
+      setTerminalStatus('error');
+    }
   }, [conversationLog]);
+
+  // Cancel handler
+  const handleCancel = useCallback(() => {
+    emit('cancel_configurator', { project_id: project.id });
+  }, [emit, project.id]);
 
   // Listen for setup_progress WebSocket events
   useEffect(() => {
@@ -289,12 +318,40 @@ export function SetupFlow({ project }: SetupFlowProps) {
           <div className="flex items-center space-x-3 mb-4">
             <MessageSquareIcon className="w-5 h-5 text-accent-cyan" />
             <h3 className="text-lg font-semibold">Claude Conversation</h3>
-            {configuring && (
-              <LoaderIcon className="w-4 h-4 animate-spin text-accent-cyan ml-auto" />
-            )}
+            <div className="ml-auto flex items-center space-x-3">
+              {configuring && (
+                <LoaderIcon className="w-4 h-4 animate-spin text-accent-cyan" />
+              )}
+              {terminalStatus === 'complete' && !configuring && (
+                <span className="flex items-center space-x-1 text-status-success text-xs font-medium">
+                  <CheckCircleIcon className="w-4 h-4" />
+                  <span>Complete</span>
+                </span>
+              )}
+              {terminalStatus === 'error' && !configuring && (
+                <span className="flex items-center space-x-1 text-status-error text-xs font-medium">
+                  <XCircleIcon className="w-4 h-4" />
+                  <span>Failed</span>
+                </span>
+              )}
+              {configuring && (
+                <button
+                  onClick={handleCancel}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors text-xs font-medium"
+                  title="Cancel configurator"
+                >
+                  <SquareIcon className="w-3.5 h-3.5" />
+                  <span>Cancel</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="bg-bg-tertiary rounded-lg p-4 max-h-[500px] overflow-y-auto font-mono text-sm space-y-2">
+          <div
+            ref={logContainerRef}
+            onScroll={handleLogScroll}
+            className="bg-bg-tertiary rounded-lg p-4 max-h-[500px] overflow-y-auto font-mono text-sm space-y-2"
+          >
             {conversationLog.map((entry, i) => (
               <ConversationLine key={i} entry={entry} />
             ))}
@@ -303,6 +360,18 @@ export function SetupFlow({ project }: SetupFlowProps) {
             )}
             <div ref={logEndRef} />
           </div>
+
+          {!autoScroll && configuring && (
+            <button
+              onClick={() => {
+                setAutoScroll(true);
+                logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="mt-2 text-xs text-accent-cyan hover:underline"
+            >
+              ↓ Scroll to bottom
+            </button>
+          )}
         </motion.div>
       )}
     </div>

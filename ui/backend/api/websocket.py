@@ -1,6 +1,10 @@
 """WebSocket handlers for real-time updates."""
 
+import logging
+
 from flask_socketio import emit, join_room, leave_room
+
+log = logging.getLogger("ralph-ui.websocket")
 
 
 def register_handlers(socketio):
@@ -21,6 +25,27 @@ def register_handlers(socketio):
         room = f"project_{project_id}"
         leave_room(room)
         emit("unsubscribed", {"project_id": project_id})
+
+    @socketio.on("cancel_configurator")
+    def handle_cancel_configurator(data):
+        """Cancel a running configurator process."""
+        from services.configurator_invoker import cancel_configurator
+
+        project_id = data.get("project_id")
+        if project_id is None:
+            emit("error", {"message": "project_id is required"})
+            return
+
+        cancelled = cancel_configurator(project_id)
+        log.info(
+            "Cancel request for project %d: %s",
+            project_id,
+            "cancelled" if cancelled else "nothing running",
+        )
+        emit(
+            "cancel_ack",
+            {"project_id": project_id, "cancelled": cancelled},
+        )
 
     @socketio.on("connect")
     def handle_connect():

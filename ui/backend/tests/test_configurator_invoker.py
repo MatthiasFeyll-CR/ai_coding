@@ -4,7 +4,6 @@ Tests the infrastructure setup flow including backup, validation loop,
 auto-fix attempts, and status transitions as specified in the UI handoff doc.
 """
 
-import io
 import json
 import os
 from pathlib import Path
@@ -352,6 +351,22 @@ class TestRunSetupFlow:
 class TestInvokeConfigurator:
     """Test the _invoke_configurator subprocess call."""
 
+    def _make_mock_popen(self, stdout_lines, returncode=0, stderr_text=""):
+        """Create a mock Popen process with line-by-line stdout iteration."""
+        mock_proc = MagicMock()
+        # readline() returns each line, then "" to signal EOF
+        mock_proc.stdout.readline = MagicMock(
+            side_effect=[line + "\n" for line in stdout_lines] + [""]
+        )
+        mock_proc.stdout.close = MagicMock()
+        mock_proc.stderr.read = MagicMock(return_value=stderr_text)
+        mock_proc.stderr.close = MagicMock()
+        mock_proc.wait = MagicMock()
+        mock_proc.returncode = returncode
+        mock_proc.pid = 12345
+        mock_proc.poll = MagicMock(return_value=None)
+        return mock_proc
+
     def test_calls_claude_command(self, app, sample_project_dir):
         """_invoke_configurator should call the claude CLI via Popen."""
         from models import Project, ProjectSetup
@@ -379,22 +394,28 @@ class TestInvokeConfigurator:
             invoker = _make_invoker(app, project, db)
             invoker.setup = setup
 
-            # Mock subprocess.run to return a successful CompletedProcess
-            mock_completed = MagicMock()
-            mock_completed.returncode = 0
-            mock_completed.stdout = "Config generated"
-            mock_completed.stderr = ""
+            # Simulate stream-json output lines
+            stdout_lines = [
+                json.dumps({"type": "system", "model": "claude-opus-4-6"}),
+                json.dumps({"type": "result", "result": "Done", "is_error": False}),
+            ]
+            mock_proc = self._make_mock_popen(stdout_lines, returncode=0)
 
             with patch(
-                "services.configurator_invoker.subprocess.run",
-                return_value=mock_completed,
-            ) as mock_run:
-                result = invoker._invoke_configurator()
+                "services.configurator_invoker.subprocess.Popen",
+                return_value=mock_proc,
+            ) as mock_popen:
+                with patch.object(
+                    invoker, "_build_env", return_value=os.environ.copy()
+                ):
+                    result = invoker._invoke_configurator()
 
-                mock_run.assert_called_once()
-                cmd = mock_run.call_args[0][0]
+                mock_popen.assert_called_once()
+                cmd = mock_popen.call_args[0][0]
                 assert "claude" in cmd
                 assert "-p" in cmd
+                assert "--output-format" in cmd
+                assert "stream-json" in cmd
                 assert result is True
 
     def test_returns_false_on_failure(self, app, sample_project_dir):
@@ -424,17 +445,22 @@ class TestInvokeConfigurator:
             invoker = _make_invoker(app, project, db)
             invoker.setup = setup
 
-            mock_completed = MagicMock()
-            mock_completed.returncode = 1
-            mock_completed.stdout = ""
-            mock_completed.stderr = "Error!"
+            stdout_lines = [
+                json.dumps({"type": "result", "result": "Error!", "is_error": True}),
+            ]
+            mock_proc = self._make_mock_popen(
+                stdout_lines, returncode=1, stderr_text="Error!"
+            )
 
             with patch(
-                "services.configurator_invoker.subprocess.run",
-                return_value=mock_completed,
+                "services.configurator_invoker.subprocess.Popen",
+                return_value=mock_proc,
             ):
-                result = invoker._invoke_configurator()
-                assert result is False
+                with patch.object(
+                    invoker, "_build_env", return_value=os.environ.copy()
+                ):
+                    result = invoker._invoke_configurator()
+                    assert result is False
 
     def test_returns_false_on_file_not_found(self, app, sample_project_dir):
         """_invoke_configurator should return False if claude CLI not found."""
@@ -464,11 +490,81 @@ class TestInvokeConfigurator:
             invoker.setup = setup
 
             with patch(
-                "services.configurator_invoker.subprocess.run",
+                "services.configurator_invoker.subprocess.Popen",
                 side_effect=FileNotFoundError,
             ):
-                result = invoker._invoke_configurator()
-                assert result is False
+                with patch.object(
+                    invoker, "_build_env", return_value=os.environ.copy()
+                ):
+                    result = invoker._invoke_configurator()
+                    assert result is False
+
+    def test_cancel_stops_reading(self, app, sample_project_dir):
+        """_invoke_configurator should stop reading when cancelled."""
+        from models import Project, ProjectSetup
+
+        with app.app_context():
+            from database import db
+
+            project = Project(
+                name="test",
+                root_path=sample_project_dir,
+                config_path=os.path.join(sample_project_dir, "pipeline-config.json"),
+                status="configuring",
+            )
+            db.session.add(project)
+            db.session.commit()
+
+            setup = ProjectSetup(
+                project_id=project.id,
+                status="configuring",
+                current_step="pipeline_configurator",
+            )
+            db.session.add(setup)
+            db.session.commit()
+
+            invoker = _make_invoker(app, project, db)
+            invoker.setup = setup
+
+            # Simulate many lines, but cancel after first
+            stdout_lines = [
+                json.dumps({"type": "system", "model": "claude-opus-4-6"}),
+                json.dumps(
+                    {"type": "assistant", "message": {"content": [{"text": "Hello"}]}}
+                ),
+            ]
+            mock_proc = self._make_mock_popen(stdout_lines, returncode=0)
+
+            def set_cancelled_on_second_read():
+                """After first readline, set _cancelled to True."""
+                calls = mock_proc.stdout.readline.call_count
+                if calls >= 1:
+                    invoker._cancelled = True
+
+            orig_readline = mock_proc.stdout.readline.side_effect
+            call_idx = [0]
+
+            def readline_with_cancel():
+                if call_idx[0] < len(stdout_lines):
+                    result = stdout_lines[call_idx[0]] + "\n"
+                    call_idx[0] += 1
+                    if call_idx[0] >= 1:
+                        invoker._cancelled = True
+                    return result
+                return ""
+
+            mock_proc.stdout.readline = MagicMock(side_effect=readline_with_cancel)
+            mock_proc.poll = MagicMock(return_value=None)
+
+            with patch(
+                "services.configurator_invoker.subprocess.Popen",
+                return_value=mock_proc,
+            ):
+                with patch.object(
+                    invoker, "_build_env", return_value=os.environ.copy()
+                ):
+                    result = invoker._invoke_configurator()
+                    assert result is False  # cancelled → returns False
 
 
 class TestValidateEnvironment:

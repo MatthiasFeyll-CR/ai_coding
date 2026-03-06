@@ -213,6 +213,7 @@ def configure_project(project_id):
     pid = project.id
     log.info("Starting configurator for project %d (%s)", pid, project.root_path)
     configurator = ConfiguratorInvoker(pid, socketio=socketio, app=flask_app)
+
     socketio.start_background_task(configurator.run_setup)
 
     return (
