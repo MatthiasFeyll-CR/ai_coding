@@ -72,6 +72,7 @@ src/ralph_pipeline/phases/prd_generation.py
 src/ralph_pipeline/phases/qa_review.py
 src/ralph_pipeline/phases/ralph_execution.py
 src/ralph_pipeline/phases/reconciliation.py
+tests/test_additional.py
 tests/test_cli.py
 tests/test_config.py
 tests/test_health.py

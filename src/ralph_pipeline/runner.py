@@ -319,4 +319,3 @@ class MilestoneRunner:
             "phase_end", milestone=self.milestone.id, data={"phase": "reconciliation"}
         )
         self.reconciled()
-        self.reconciled()
