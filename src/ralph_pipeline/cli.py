@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import signal
 import sys
 from pathlib import Path
@@ -141,11 +142,67 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 sys.exit(1)
 
         base_branch = git.current_branch()
+        # In dry-run mode, git returns "[dry-run]" — use a fallback
+        if args.dry_run and (not base_branch or base_branch == "[dry-run]"):
+            import subprocess as _sp
+
+            try:
+                result = _sp.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=str(project_root),
+                    capture_output=True,
+                    text=True,
+                )
+                base_branch = result.stdout.strip() or "main"
+            except Exception:
+                base_branch = "main"
         state = PipelineState.initialize(config, base_branch)
         state.save(state_file)
 
     # Register signal handlers
     _setup_signal_handlers(state, state_file, plogger, config, infra)
+
+    # Register atexit teardown (design §5.6)
+    atexit.register(infra.teardown_all)
+
+    # Auto-validate infra before first milestone (design §8.2)
+    if not args.dry_run and (
+        config.test_execution.services or config.test_execution.tier1.environments
+    ):
+        plogger.info("Auto-validating test infrastructure...")
+        try:
+            if config.test_execution.services:
+                report = health_checker.wait_all_ready(config.test_execution.services)
+                for r in report.services:
+                    if r.healthy:
+                        plogger.success(f"{r.name} ready ({r.wait_seconds:.1f}s)")
+                    else:
+                        plogger.warning(f"{r.name}: {r.error}")
+        except Exception as e:
+            plogger.warning(f"Infra pre-validation: {e}")
+
+    # Source env setup if configured (design §5.6 EnvSetupConfig)
+    if (
+        not args.dry_run
+        and config.env_setup.source_file
+        and config.env_setup.setup_function
+    ):
+        plogger.info(
+            f"Sourcing env setup: {config.env_setup.source_file} → {config.env_setup.setup_function}()"
+        )
+        try:
+            from ralph_pipeline.subprocess_utils import run_command
+
+            run_command(
+                f"bash -c 'source {config.env_setup.source_file} && {config.env_setup.setup_function}'",
+                cwd=project_root,
+                timeout=120,
+                check=True,
+                shell=True,
+            )
+            plogger.success("Env setup complete")
+        except Exception as e:
+            plogger.warning(f"Env setup failed: {e}")
 
     # Determine starting milestone
     milestones = config.milestones
@@ -246,18 +303,25 @@ def _handle_resume(
     if not current_ms:
         return
 
+    current_branch = git.current_branch()
+
     # Determine the correct branch for the current phase
     phases_on_feature = {"prd_generation", "ralph_execution", "qa_review"}
-    # merge_verify depends on sub-step; reconciliation is on base
     if current_ms.phase in phases_on_feature:
-        # Feature branch: ralph/mN-slug (we'd need slug from config, but
-        # at this point we just ensure the state is correct)
-        pass
-    elif current_ms.phase == "reconciliation":
+        # Should be on feature branch — verify
+        expected_prefix = f"ralph/m{state.current_milestone}-"
+        if not current_branch.startswith(expected_prefix):
+            plogger.warning(
+                f"Expected to be on branch {expected_prefix}* but on {current_branch}"
+            )
+    elif current_ms.phase in ("reconciliation", "merge_verify"):
         # Should be on base branch
-        pass
+        if current_branch != state.base_branch:
+            plogger.warning(
+                f"Expected to be on {state.base_branch} but on {current_branch}"
+            )
 
-    # Handle uncommitted changes
+    # Refuse to proceed with uncommitted changes on the wrong branch
     if git.has_uncommitted_changes():
         plogger.info("Found uncommitted changes — auto-committing for resume")
         git.commit_all("chore: user manual fix before resume")

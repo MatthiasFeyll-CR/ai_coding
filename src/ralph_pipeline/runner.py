@@ -286,6 +286,7 @@ class MilestoneRunner:
                 git=self.git,
                 plogger=self.plogger,
                 project_root=self.project_root,
+                state_file=self.state_file,
             )
         except MergeVerifyError as e:
             self._failure_reason = str(e)
@@ -317,4 +318,5 @@ class MilestoneRunner:
         self.event_logger.emit(
             "phase_end", milestone=self.milestone.id, data={"phase": "reconciliation"}
         )
+        self.reconciled()
         self.reconciled()

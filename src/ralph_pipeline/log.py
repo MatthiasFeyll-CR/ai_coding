@@ -25,6 +25,8 @@ class PipelineLogger:
         self._total_milestones = 0
         self._elapsed_start = time.monotonic()
         self._project_name = ""
+        self._tokens_in = 0
+        self._tokens_out = 0
 
     def set_context(
         self,
@@ -41,6 +43,17 @@ class PipelineLogger:
         self._total_milestones = total_milestones
         if project_name:
             self._project_name = project_name
+
+    def track_tokens(self, tokens_in: int, tokens_out: int) -> None:
+        """Accumulate token usage for display in status panel."""
+        self._tokens_in += tokens_in
+        self._tokens_out += tokens_out
+
+    def _format_tokens(self, count: int) -> str:
+        """Format token count for display (e.g., 48000 → ~48K)."""
+        if count >= 1000:
+            return f"~{count // 1000}K"
+        return str(count)
 
     def _ts(self) -> str:
         from datetime import datetime
@@ -67,6 +80,12 @@ class PipelineLogger:
             f"  Phase: {phase_name} ({phase_num})\n"
             f"  Elapsed: {mins}m {secs:02d}s"
         )
+
+        if self._tokens_in > 0 or self._tokens_out > 0:
+            content += (
+                f"\n  Tokens: {self._format_tokens(self._tokens_in)} in / "
+                f"{self._format_tokens(self._tokens_out)} out"
+            )
 
         panel = Panel(
             content,

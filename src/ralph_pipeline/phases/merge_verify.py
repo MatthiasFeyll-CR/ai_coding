@@ -100,6 +100,7 @@ def run_merge_verify(
     git: GitOps,
     plogger: PipelineLogger,
     project_root: Path,
+    state_file: Path | None = None,
 ) -> None:
     """Merge milestone branch, run post-merge tests, gate checks.
 
@@ -149,7 +150,8 @@ def run_merge_verify(
     # Register test ownership
     test_map = regression_analyzer.build_test_map(milestone.id)
     state.test_milestone_map = test_map
-    state.save()
+    if state_file:
+        state.save(state_file)
 
     # Post-merge heavy tests with regression-aware fix cycles
     try:
@@ -244,4 +246,5 @@ def run_merge_verify(
     try:
         git.delete_branch(branch)
     except Exception:
+        plogger.warning(f"Could not delete branch {branch}")
         plogger.warning(f"Could not delete branch {branch}")

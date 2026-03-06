@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -16,7 +16,11 @@ class EventLogger:
 
     def emit(self, event: str, **data: object) -> None:
         """Write a single event line."""
-        entry = {"ts": datetime.utcnow().isoformat() + "Z", "event": event, **data}
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "event": event,
+            **data,
+        }
         with open(self.path, "a") as f:
             f.write(json.dumps(entry, default=str) + "\n")
 
