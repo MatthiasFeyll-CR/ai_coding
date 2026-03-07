@@ -51,7 +51,8 @@
   │                          ▼                                          │
   │  [6] Pipeline Configurator          /pipeline_configurator          │
   │      pipeline-config.json + .ralph/CLAUDE.md                        │
-  │      Translates strategy into machine-readable config               │
+  │      Translates strategy into machine-readable config with          │
+  │      declarative test_infrastructure + scaffolding specs            │
   │                                                                     │
   └─────────────────────────────────────────────────────────────────────┘
                              │
@@ -62,6 +63,13 @@
   ├─────────────────────────────────────────────────────────────────────┤
   │                                                                     │
   │  ralph-pipeline run --config pipeline-config.json                   │
+  │                                                                     │
+  │  Phase 0: Infrastructure Bootstrap (runs once, before milestones)   │
+  │  Creates project scaffolding + test infrastructure from             │
+  │  declarative specs in pipeline-config.json. Generates               │
+  │  docker-compose.test.yml, Dockerfiles, project directories,         │
+  │  framework boilerplate. Writes concrete test_execution commands     │
+  │  back into the config.                                              │
   │                                                                     │
   │  Iterates through milestones sequentially, each runs 5 phases:      │
   │  PRD + Context Bundle → Ralph Coding → QA Review →                  │

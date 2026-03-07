@@ -12,11 +12,13 @@ You are specialist **[6] Pipeline Configurator** in the development pipeline.
 
 You are the final step before fully automated execution. Your goal is to read the Strategy Planner's output and produce everything the `ralph-pipeline` tool needs to build the entire project unattended:
 
-1. **`pipeline-config.json`** — Machine-readable project config (milestones, gate checks, paths)
-2. **`.ralph/CLAUDE.md`** — Ralph agent instructions tailored to this project
+1. **`pipeline-config.json`** — Machine-readable project config (milestones, gate checks, paths, declarative infrastructure specs)
+2. **`.ralph/CLAUDE.md`** — Ralph agent workflow instructions (process-only — no project-specific commands)
 3. **Verification** — Validate the config is correct and ralph-pipeline can parse it
 
-After this step, the user runs `ralph-pipeline run --config pipeline-config.json` and the pipeline executes all milestones sequentially.
+**Key principle: declare WHAT, not HOW.** The configurator describes what infrastructure and scaffolding the project needs (services, runtimes, databases, directory structure). The pipeline's **Phase 0 — Infrastructure Bootstrap** then generates the actual files (docker-compose.test.yml, Dockerfiles, project boilerplate) and concrete shell commands. This eliminates the temporal mismatch where commands reference files that don't exist yet.
+
+After this step, the user runs `ralph-pipeline run --config pipeline-config.json` and the pipeline executes Phase 0 once, then all milestones sequentially.
 
 ---
 
@@ -33,6 +35,7 @@ After this step, the user runs `ralph-pipeline run --config pipeline-config.json
 [5]   Strategy Planner        →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json     ← YOU ARE HERE
 [7]   Pipeline Execution      →  ralph-pipeline run (automated)
+      [7a] Phase 0            →  Infrastructure Bootstrap (once, before milestone loop)
 ```
 
 **Your input:** Strategy Planner handover (`docs/05-milestones/handover.json`) + all upstream docs.
@@ -45,11 +48,12 @@ After this step, the user runs `ralph-pipeline run --config pipeline-config.json
 1. Read the handover file (path provided by user, typically `docs/05-milestones/handover.json`).
 2. Extract the strategy data: milestones, execution order, story estimates.
 3. Read the architecture docs to understand:
-   - Project structure (`docs/02-architecture/project-structure.md`) — for Docker, frontend, service paths
-   - Tech stack (`docs/02-architecture/tech-stack.md`) — for gate check commands
+   - Project structure (`docs/02-architecture/project-structure.md`) — for scaffolding, Docker, frontend, service paths
+   - Tech stack (`docs/02-architecture/tech-stack.md`) — for gate check commands and runtime detection
    - Testing strategy (`docs/02-architecture/testing-strategy.md`) — for QA configuration
-4. If `docs/04-test-architecture/` exists, read the test plan (`docs/04-test-architecture/test-plan.md`) for test runner commands and coverage thresholds to include in gate checks.
-5. Begin generating the config.
+4. If `docs/04-test-architecture/` exists, read the test plan (`docs/04-test-architecture/test-plan.md`) for test runner commands, coverage thresholds, and database names.
+5. **Read ALL milestone scope files** (`docs/05-milestones/milestone-*.md`) to enumerate the full set of required services, runtimes, and infrastructure across every milestone — not just the first one. Phase 0 must create infrastructure that supports the entire project lifecycle.
+6. Begin generating the config.
 
 ---
 
@@ -152,52 +156,74 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
     "description": "Set to the path of a shell script to source before running Claude subprocesses (e.g., 'ralph.sh' for Azure endpoint setup). If setup_function is set, that function is called after sourcing."
   },
 
-  "test_execution": {
-    "test_command": "docker compose -f docker-compose.test.yml run --rm test-python pytest --ci",
-    "integration_test_command": "docker compose -f docker-compose.test.yml run --rm test-python pytest --integration",
-    "timeout_seconds": 300,
-    "max_fix_cycles": 5,
-    "condition": "test -f docker-compose.test.yml",
-    "build_command": "docker compose -f docker-compose.test.yml build --no-cache test-python test-node",
-    "build_timeout_seconds": 300,
-    "setup_command": "docker compose -f docker-compose.test.yml up -d postgres redis && for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U myuser -q 2>/dev/null && exit 0; sleep 2; done; echo 'Timed out waiting for PostgreSQL'; exit 1",
-    "teardown_command": "docker compose -f docker-compose.test.yml down --volumes --remove-orphans",
-    "force_teardown_command": "docker compose -f docker-compose.test.yml kill && docker compose -f docker-compose.test.yml down --volumes --remove-orphans --timeout 5; docker compose -f docker-compose.test.yml rm -f -v",
-    "setup_timeout_seconds": 120,
+  "test_infrastructure": {
+    "compose_file": "docker-compose.test.yml",
 
     "services": [
-      {"name": "postgres", "type": "tcp", "host": "localhost", "port": 5432, "startup_timeout": 30},
-      {"name": "redis", "type": "tcp", "host": "localhost", "port": 6379, "startup_timeout": 15}
+      {
+        "name": "postgres",
+        "image": "postgres:16-alpine",
+        "port": 5432,
+        "environment": {
+          "POSTGRES_USER": "testuser",
+          "POSTGRES_PASSWORD": "testpass",
+          "POSTGRES_DB": "testdb"
+        },
+        "readiness": "pg_isready"
+      },
+      {
+        "name": "redis",
+        "image": "redis:7-alpine",
+        "port": 6379,
+        "readiness": "tcp"
+      }
     ],
 
-    "tier1": {
-      "compose_file": "docker-compose.test.yml",
-      "teardown_command": "docker compose -f docker-compose.test.yml down --volumes --remove-orphans",
-      "setup_command": "docker compose -f docker-compose.test.yml up -d postgres redis && for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U myuser -q 2>/dev/null && exit 0; sleep 2; done; echo 'Timed out waiting for PostgreSQL'; exit 1",
-      "setup_timeout_seconds": 120,
-      "build_timeout_seconds": 300,
-      "image_hash_file": ".test-image-hashes",
-      "environments": [
-        {
-          "name": "python",
-          "service": "test-python",
-          "test_command": "docker compose -f docker-compose.test.yml run --rm test-python pytest",
-          "build_command": "docker compose -f docker-compose.test.yml build --no-cache test-python",
-          "rebuild_trigger_files": ["requirements.txt", "requirements-dev.txt", "pyproject.toml", "docker-compose.test.yml"],
-          "condition": "test -f requirements.txt",
-          "timeout_seconds": 300
-        },
-        {
-          "name": "node",
-          "service": "test-node",
-          "test_command": "docker compose -f docker-compose.test.yml run --rm test-node npm test",
-          "build_command": "docker compose -f docker-compose.test.yml build --no-cache test-node",
-          "rebuild_trigger_files": ["package.json", "package-lock.json", "docker-compose.test.yml"],
-          "condition": "test -f package.json",
-          "timeout_seconds": 300
-        }
-      ]
+    "runtimes": [
+      {
+        "name": "python",
+        "base_image": "python:3.12-slim",
+        "source_dir": ".",
+        "workdir": "/app",
+        "dependency_files": ["requirements.txt", "requirements-dev.txt", "pyproject.toml"],
+        "install_cmd": "pip install -r requirements-dev.txt",
+        "test_framework": "pytest",
+        "test_cmd": "pytest",
+        "ci_flags": "--ci"
+      },
+      {
+        "name": "node",
+        "base_image": "node:20-slim",
+        "source_dir": "frontend",
+        "workdir": "/app",
+        "dependency_files": ["package.json", "package-lock.json"],
+        "install_cmd": "npm ci",
+        "test_framework": "vitest",
+        "test_cmd": "npm test"
+      }
+    ],
+
+    "databases": [
+      {
+        "service": "postgres",
+        "db_name": "app_test",
+        "user": "testuser",
+        "password": "testpass"
+      }
+    ],
+
+    "timeouts": {
+      "setup_seconds": 120,
+      "build_seconds": 300,
+      "test_seconds": 300
     }
+  },
+
+  "scaffolding": {
+    "enabled": true,
+    "project_structure_doc": "docs/02-architecture/project-structure.md",
+    "tech_stack_doc": "docs/02-architecture/tech-stack.md",
+    "framework_boilerplate": true
   },
 
   "retry": {
@@ -208,6 +234,7 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
 ```
 
 **Generation rules:**
+
 1. **milestones:** Populate from strategy handover `strategy.milestones` array. Array order = execution order.
 2. **models:** Controls which Claude model is used for each pipeline phase. Empty string (`""`) uses the CLI default (typically Opus). Set specific model IDs to use cheaper models for phases that don't need maximum capability. Recommended defaults:
    - `ralph`: `""` (Opus — complex code generation needs the strongest model)
@@ -222,116 +249,119 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
    - If frontend is TypeScript → add tsc check
    - If Python services exist → add mypy check
    - If linting tools configured → add lint check
-4. **test_execution:** Determine from `test-plan.md` (in `docs/04-test-architecture/`) and `tech-stack.md`.
+4. **test_infrastructure (declarative — WHAT not HOW):**
 
-   **CRITICAL PRINCIPLE: All tests run inside Docker containers.** Never configure test commands that execute directly on the host machine. The host has undefined state (unknown Python/Node versions, missing dependencies). Docker containers provide a defined, reproducible environment. The project must have a `docker-compose.test.yml` (or equivalent) that defines:
-   - **Test containers** — dev-build images with all dependencies installed, source code bind-mounted from host. These are dirty dev builds — no production optimization needed.
-   - **Dependency services** — pre-built images (postgres, redis, rabbitmq, etc.) that are never rebuilt, only their containers/volumes are removed for clean state.
+   This section declares the test infrastructure the project needs. **Phase 0** reads this spec and generates the actual files (docker-compose.test.yml, Dockerfiles) and concrete shell commands. The configurator NEVER generates shell commands for test setup, teardown, or execution.
 
-   **Two-tier testing model:**
+   **All tests run inside Docker containers.** The host has undefined state (unknown Python/Node versions, missing dependencies). Docker containers provide a defined, reproducible environment.
 
-   **Tier 2 (post-merge, full rebuild)** — top-level `test_execution` fields:
-   - `test_command`: Test runner via `docker compose run --rm`. Must use CI flags. Example: `docker compose -f docker-compose.test.yml run --rm test-python pytest --ci`.
-   - `integration_test_command`: Separate integration test command if applicable. Also runs inside Docker. Set to `null` if not applicable.
-   - `timeout_seconds`: Maximum time for a single test run. Default 300.
-   - `max_fix_cycles`: Maximum auto-fix attempts when tests fail. Default 5.
-   - `condition`: Shell condition to check before running tests (e.g., `test -f docker-compose.test.yml`).
-   - `build_command`: Rebuilds test container images with `--no-cache`. Only target application test containers — NEVER rebuild external images (postgres, redis, etc.). The pipeline runs this before every Tier 2 test suite.
-   - `build_timeout_seconds`: Default 300.
-   - `setup_command`: Starts dependency services with readiness waits. Must use host-side health checks (see NEVER use docker exec rule below). Dependency containers are removed and recreated with fresh volumes each time.
-   - `teardown_command`: Graceful shutdown. Must remove all data/volumes (`--volumes --remove-orphans`).
-   - `force_teardown_command`: Forceful cleanup when graceful fails.
-   - `setup_timeout_seconds`: Default 120.
+   **Phase 0 generates a two-tier testing setup from this spec:**
+   - **Tier 1 (Ralph per-story, fast feedback)** — source bind-mounted, images rebuilt only on dependency changes, dependency services torn down and recreated for clean state.
+   - **Tier 2 (post-merge, full rebuild)** — images rebuilt with `--no-cache`, full integration test suite.
 
-   **Tier 1 (Ralph per-story, fast feedback)** — `test_execution.tier1` object:
-   - `compose_file`: Path to the test compose file (e.g., `docker-compose.test.yml`).
-   - `teardown_command`: Removes ALL containers + volumes (dependency services AND test containers) for clean state. Called before EVERY test run.
-   - `setup_command`: Starts dependency services fresh with readiness waits. Called after teardown.
-   - `setup_timeout_seconds`: Default 120.
-   - `build_timeout_seconds`: Default 300. For image rebuilds when deps change.
-   - `image_hash_file`: Path to store dependency file hashes. Default `.test-image-hashes`. Used to detect when test container images need rebuilding.
-   - `environments`: Array of test environments, one per fundamentally different runtime:
+   **How to populate the spec:**
 
-     Each environment object:
-     - `name`: Identifier (e.g., `"python"`, `"node"`).
-     - `service`: Docker compose service name (e.g., `"test-python"`).
-     - `test_command`: Full `docker compose run --rm` command. Example: `docker compose -f docker-compose.test.yml run --rm test-python pytest`.
-     - `build_command`: Rebuilds this environment's image with `--no-cache`. Only runs when dependency files change.
-     - `rebuild_trigger_files`: Array of file paths (relative to project root) whose content is hashed. When any hash changes, the image is rebuilt. Examples: `["requirements.txt", "requirements-dev.txt", "pyproject.toml", "docker-compose.test.yml"]` for Python, `["package.json", "package-lock.json"]` for Node.
-     - `condition`: Shell condition — skip this environment if not met (e.g., `test -f requirements.txt`).
-     - `timeout_seconds`: Max time for test command. Default 300.
+   - **services:** Enumerate ALL external infrastructure the project's tests depend on **across ALL milestones**. Scan every `docs/05-milestones/milestone-*.md` file for references to databases, caches, message brokers, search engines, etc. Also check `docs/02-architecture/tech-stack.md` and `docs/04-test-architecture/test-plan.md`. Each service needs: name, pre-built image (never custom-build), exposed port, environment variables, and readiness probe type (`pg_isready` for postgres, `redis-cli ping` for redis, `tcp` for generic TCP check).
+   - **runtimes:** One entry per distinct runtime in the project. Determine from `tech-stack.md`. Each runtime needs: name, base Docker image, source directory to bind-mount, working directory inside container, dependency files (for hash-based rebuild detection), install command, test framework, test command, and CI-specific flags.
+   - **databases:** Extract from test configuration files (e.g., Django `settings/test.py`, Rails `database.yml`), test architecture docs (`docs/04-test-architecture/test-plan.md`), or environment variable references in milestone scope files. Each entry links to a service and specifies the test database name, user, and password. **This is critical** — wrong DB names cause silent test failures.
+   - **timeouts:** Reasonable defaults. Adjust based on project size.
 
-   **Key Tier 1 behaviors (enforced by the pipeline):**
-   - Source code is bind-mounted — code changes are immediately visible without image rebuild.
-   - Test images are only rebuilt when `rebuild_trigger_files` content changes (hash-based detection).
-   - Dependency services (DB, cache, broker) use pre-built images — never rebuilt, but containers + volumes are removed and recreated before EVERY test run for clean state.
-   - Tests execute via `docker compose run --rm` — fresh process each time, container removed after.
-   - ALL configured environments must pass for Ralph to commit.
+   **Key constraints:**
+   - NEVER generate concrete shell commands — only declare infrastructure needs.
+   - Services array must cover the FULL project lifecycle (all milestones), not just M1.
+   - Readiness probes must be host-side compatible (no `docker exec` — Phase 0 handles this).
+   - If you are uncertain whether a service is needed, **ask the user** — never guess.
 
-   **Determining environments:** Inspect the project's tech stack. Create one environment per distinct runtime:
-   - Python backend → `test-python` environment
-   - Node.js frontend → `test-node` environment
-   - Go microservice → `test-go` environment
-   - If the project has only one runtime, define a single environment.
+5. **scaffolding:**
 
-   **docker-compose.test.yml expectations:** The configurator should verify (or instruct the user to create) a test compose file that:
-   - Defines test service(s) with bind-mounted source code (e.g., `volumes: ["./:/app"]`)
-   - Uses dev/dirty Dockerfiles — install dev dependencies, no multi-stage production builds
-   - Defines dependency services using pre-built images with exposed ports
-   - Does NOT use production Dockerfiles or optimized builds
+   Declares project setup that Phase 0 creates before the milestone loop begins.
 
-   If `docs/04-test-architecture/test-plan.md` exists, extract test runner commands and coverage settings from it.
-   - **Infrastructure detection:** Inspect the project to determine what services tests require. Check test settings files (e.g., Django `settings/test.py`, Rails `database.yml`) to see which services use in-memory/mock backends (no setup needed) vs. real backends (need setup). Look for docker-compose files, Dockerfiles, or similar orchestration.
-   - **Distinguishing buildable vs external services:** Inspect docker-compose (or similar) to classify each service. Services with a `build:` context pointing to project source code are application services — they need rebuilding. Services using only an `image:` directive (e.g., `postgres:16`, `redis:7-alpine`) are external infrastructure — they must NOT be in `build_command`. **If you are uncertain whether a service needs rebuilding, ask the user during the configuration phase.** Never guess — the user knows their project.
-   - **NEVER use `docker compose exec` or `docker exec` in any infrastructure command.** These commands manage TTY signals and get suspended (SIGTSTP) when run inside the pipeline's `timeout bash -c` wrapper, causing the pipeline to hang indefinitely. Instead, use host-side tools that connect to exposed ports (e.g., `pg_isready -h localhost -p 5432` instead of `docker compose exec postgresql pg_isready`). For readiness checks, use bounded retry loops: `for i in $(seq 1 N); do <check> && exit 0; sleep 2; done; exit 1`.
-   - **Use `docker compose run --rm` for test execution**, NOT `docker compose exec`. The `run --rm` command starts a fresh container, runs the command, and removes the container — it works correctly in non-interactive pipeline contexts.
-   - **Verification requirement:** After generating the commands, you MUST test them by running them in order: `build_command`, `setup_command`, `teardown_command`, then `force_teardown_command`. Also verify Tier 1: `tier1.teardown_command`, `tier1.setup_command`, then each environment's `test_command`. Fix any issues before saving the config.
-5. **env_setup:** Ask the user if they have a shell setup script (like Azure endpoint config). If yes, set `source_file` and `setup_function`.
-6. **paths:** Use standard conventions, confirm with user if non-standard.
+   - `project_structure_doc`: Path to the architecture doc that defines directory layout. Phase 0 reads this and creates all directories and placeholder files.
+   - `tech_stack_doc`: Path to the tech stack doc. Phase 0 uses this to determine which framework boilerplate to generate.
+   - `framework_boilerplate`: Whether Phase 0 should create framework initialization files (e.g., Django `manage.py` + settings, React `vite.config.ts` + `index.html`, Flask `app.py` + factory pattern). Set `true` for greenfield projects. Set `false` if the project already has a codebase.
+
+6. **env_setup:** Ask the user if they have a shell setup script (like Azure endpoint config). If yes, set `source_file` and `setup_function`.
+7. **paths:** Use standard conventions, confirm with user if non-standard.
 
 ### 4.2 .ralph/CLAUDE.md
 
-Ralph agent instructions, tailored to this project. Read the existing template in `.ralph/CLAUDE.md`, then customize with project-specific values:
+Ralph agent instructions — **process-only**. This file defines HOW Ralph works (workflow, rules, progress format), NOT WHAT the project is or how to test it.
 
-**What to customize:**
+Project-specific content (quality check commands, test infrastructure setup, browser testing instructions) lives in `.ralph/context.md`, which the PRD Writer generates fresh for each milestone with actual, verified commands.
 
-1. **Quality Checks section** — Replace the default placeholder commands with the project's actual test commands from `test_execution.tier1.environments`. All test commands run inside Docker containers via `docker compose run --rm`. Also include any gate checks (typecheck, lint) that should run inside containers. Only include checks where the condition would be met:
-   ```markdown
-   ## Quality Checks
+**What CLAUDE.md contains:**
 
-   Run these checks before committing. ALL must pass:
+1. **Task workflow** — how Ralph reads the PRD, picks stories, implements, commits
+2. **Progress report format** — structured format Ralph uses to report status
+3. **Stop condition** — `<promise>COMPLETE</promise>` terminal signal
+4. **Self-protection note** — "Do NOT modify .ralph/CLAUDE.md"
+5. **Patterns consolidation** — instructions to update Codebase Patterns in progress.txt
+6. **Context bundle reference** — instruction to read `.ralph/context.md` for project-specific commands before starting each story
 
-   \`\`\`bash
-   docker compose -f docker-compose.test.yml run --rm test-python pytest   # Python tests — MANDATORY
-   docker compose -f docker-compose.test.yml run --rm test-node npm test   # Node tests — MANDATORY
-   docker compose -f docker-compose.test.yml run --rm test-python ruff check services/  # Python lint
-   docker compose -f docker-compose.test.yml run --rm test-node npx tsc --noEmit        # TypeScript typecheck
-   \`\`\`
-   ```
+**What CLAUDE.md does NOT contain:**
 
-   **IMPORTANT — All tests run inside Docker containers.** Ralph must NEVER run tests directly on the host machine. The host has undefined state (unknown Python/Node versions, missing dependencies). All test commands use `docker compose run --rm` with the project's test compose file. Source code is bind-mounted, so Ralph's code changes are visible immediately without image rebuilds.
+- No quality check commands (these depend on test infrastructure that Phase 0 creates → go in context.md)
+- No project-specific test setup/teardown instructions (go in context.md)
+- No browser testing instructions (go in context.md)
+- No technology-specific references
 
-   **Before running quality checks for the first time in a milestone**, Ralph should ensure the test infrastructure is available by running the Tier 1 setup command (dependency services). Include this instruction in the Quality Checks section:
-   ```markdown
-   Before your first quality check in this milestone, ensure test infrastructure is running:
-   \`\`\`bash
-   docker compose -f docker-compose.test.yml down --volumes --remove-orphans
-   docker compose -f docker-compose.test.yml up -d postgres redis  # dependency services
-   \`\`\`
-   ```
+**Template structure:**
 
-   The configurator must verify that the test compose file exists and that each `docker compose run --rm` command works correctly.
+```markdown
+# CLAUDE.md — Ralph Agent Instructions
 
-2. **Project name** — Replace "a software project" with the actual project name in the first line.
+> This file defines your workflow. For project-specific commands and test instructions,
+> read `.ralph/context.md` before starting each story.
 
-4. **Browser testing** — If the project has a frontend, keep the browser testing section. If backend-only, remove it.
+## Task Workflow
 
-**Do NOT change:**
-- The task workflow steps (pipeline manages branches, Ralph implements stories)
-- The progress report format
-- The stop condition (`<promise>COMPLETE</promise>`)
-- The self-protection note ("Do NOT modify .ralph/CLAUDE.md")
-- The patterns consolidation section
+1. Read `.ralph/prd.json` to find stories with `"passes": false`.
+2. Read `.ralph/context.md` for project-specific commands, test setup, and codebase patterns.
+3. Pick the highest-priority incomplete story.
+4. Implement the story, following architecture and design references in the notes field.
+5. Run ALL quality checks listed in `.ralph/context.md`. Fix failures before committing.
+6. Commit with message: `feat(mN): US-XXX — [story title]`
+7. Update `.ralph/progress.txt` with structured status.
+8. Repeat from step 1.
+
+## Progress Report Format
+
+After each story (pass or fail), append to `.ralph/progress.txt`:
+
+\`\`\`
+## US-XXX: [Title]
+- Status: PASS | FAIL
+- Attempts: N
+- Changes: [files modified]
+- Tests: [test results summary]
+- Deviations: [any spec deviations, or "none"]
+\`\`\`
+
+After ALL stories are done (or max iterations reached), write:
+
+\`\`\`
+## Codebase Patterns
+- [Pattern 1]: [description — e.g., "All API routes use /api/v1 prefix"]
+- [Pattern 2]: [description]
+\`\`\`
+
+## Stop Condition
+
+When all stories pass or you've exhausted iterations:
+
+<promise>COMPLETE</promise>
+
+## Self-Protection
+
+Do NOT modify `.ralph/CLAUDE.md` or `.ralph/prd.json`. These are pipeline-managed files.
+You may only modify `.ralph/progress.txt` (append-only).
+```
+
+**Generation instructions:**
+- Write this template to `.ralph/CLAUDE.md` with minimal customization.
+- Replace `[Project Name]` in the header comment with the actual project name (optional).
+- Do NOT add any project-specific commands, test instructions, or technology references.
+- The PRD Writer will handle all project-specific content via `.ralph/context.md`.
 
 ## 5. Verification
 
@@ -342,8 +372,13 @@ Before finalizing, verify:
 3. **No circular dependencies:** Follow dependency chains — no milestone should depend on itself transitively.
 4. **Dependency order respected:** No milestone appears before a milestone it depends on.
 5. **Gate checks testable:** For each gate check with `required: true`, verify the `condition` would be true in the project (e.g., the Dockerfile exists).
-6. **Test execution configured:** `test_execution.test_command` is set and the `condition` would be true. The test command must work in CI mode (non-interactive, no watch mode).
-7. **Test infrastructure verified:** If `setup_command` is set, run the full lifecycle test: `setup_command` → verify services respond → `teardown_command` → verify services stopped → `force_teardown_command`. All commands must work. If any fail, fix them before saving the config. This is critical — broken infra commands waste hours of pipeline time.
+6. **Test infrastructure complete:**
+   - Every runtime in `test_infrastructure.runtimes` has all required fields (name, base_image, source_dir, dependency_files, test_cmd).
+   - Every service in `test_infrastructure.services` has a valid image reference and port.
+   - Database entries reference existing services by name.
+   - Services cover ALL milestones (cross-check against milestone scope files).
+7. **Scaffolding sources exist:** Verify that `scaffolding.project_structure_doc` and `scaffolding.tech_stack_doc` point to files that actually exist.
+8. **CLAUDE.md is process-only:** Verify `.ralph/CLAUDE.md` contains NO project-specific commands, test instructions, or technology references. It should only contain workflow rules and the reference to read `context.md`.
 
 ---
 
@@ -360,16 +395,18 @@ After config is generated and verified:
   "from": "pipeline_configurator",
   "to": "pipeline_execution",
   "timestamp": "[ISO timestamp]",
-  "summary": "Pipeline configured. [N] milestones, sequential execution. Config at pipeline-config.json.",
+  "summary": "Pipeline configured. [N] milestones, sequential execution. Phase 0 pending for infrastructure bootstrap. Config at pipeline-config.json.",
   "files_produced": [
     "pipeline-config.json",
     ".ralph/CLAUDE.md"
   ],
+  "phase0_pending": true,
+  "phase0_description": "Phase 0 runs once before the milestone loop to create project scaffolding (directory structure, framework boilerplate) and test infrastructure (docker-compose.test.yml, Dockerfiles) from the declarative specs in pipeline-config.json. After Phase 0 completes, the config's test_infrastructure section is replaced with concrete test_execution commands.",
   "next_commands": [
     {
       "skill": "ralph-pipeline",
       "command": "ralph-pipeline run --config pipeline-config.json",
-      "description": "Execute the full pipeline — all milestones, fully automated"
+      "description": "Execute the full pipeline — Phase 0 bootstraps infrastructure, then all milestones run sequentially"
     },
     {
       "skill": "ralph-pipeline",
@@ -383,6 +420,8 @@ After config is generated and verified:
     }
   ],
   "notes": [
+    "Phase 0 runs automatically before the first milestone — no manual intervention needed",
+    "Phase 0 creates scaffolding + test infrastructure, verifies lifecycle, and writes concrete test_execution commands into the config",
     "Run --dry-run first to verify the pipeline plan",
     "The pipeline generates PRDs automatically per milestone",
     "Pipeline pauses only on critical errors that require manual intervention",
@@ -396,13 +435,14 @@ After config is generated and verified:
 ## 7. Operational Rules
 
 1. **Config must be complete.** ralph-pipeline reads ONLY pipeline-config.json — it should contain everything needed.
-2. **Ask about env setup.** If the project uses Azure, custom endpoints, or other env config, the user must tell you so you can set `env_setup`.
-3. **Validate before saving.** Always run the verification checklist.
-4. **Gate checks must be realistic.** Don't add gate checks for tools that aren't in the project's tech stack.
-5. **Ralph instructions must be project-specific.** Don't leave generic placeholders — fill in actual quality check commands from gate_checks AND test_execution. Customize `.ralph/CLAUDE.md`.
-6. **Test execution is mandatory and containerized.** Every project must have `test_execution.test_command` AND `test_execution.tier1.environments` configured. All test commands must run inside Docker containers (`docker compose run --rm`). Never configure test commands that execute on the host. The pipeline enforces this at both tiers: Tier 1 (Ralph per-story) and Tier 2 (post-merge). If the test-plan.md specifies a test runner, wrap it in a Docker compose run command. Also determine which tech stacks exist and create one Tier 1 environment per distinct runtime.
-8. **Test infrastructure must be declared and verified.** If any tests require external services (databases, caches, message brokers), you must configure all infra commands: `build_command`, `setup_command`, `teardown_command`, and `force_teardown_command`. Also configure `services` array for health checks. The pipeline is technology-agnostic — it runs these commands as-is without appending flags or assuming Docker. You MUST test the full lifecycle (build → setup → teardown → force_teardown) before saving the config. Broken infrastructure commands are the #1 cause of wasted pipeline hours.
-9. **Application images must be rebuilt without cache.** The `build_command` must use `--no-cache` (or equivalent) to guarantee tests run the latest code. Only target services with custom build steps — never rebuild external images like postgres or redis. If you're unsure which services are buildable, **ask the user during configuration** — do not guess.
+2. **Declare WHAT, not HOW.** The `test_infrastructure` and `scaffolding` sections describe needs, not commands. Phase 0 converts declarations to concrete files and commands. Never generate shell commands for test setup, teardown, or execution.
+3. **Scan ALL milestone scopes.** Read every `docs/05-milestones/milestone-*.md` file to enumerate the full set of services and runtimes. A service mentioned only in M4 must still appear in `test_infrastructure.services` — Phase 0 creates infrastructure for the entire project lifecycle upfront.
+4. **Extract database names explicitly.** Check test settings files (Django `settings/test.py`, etc.), test architecture docs, and environment variables to find actual test database names. Wrong DB names cause silent failures.
+5. **CLAUDE.md is process-only.** It contains workflow rules and a pointer to `context.md`. No quality check commands, no test instructions, no technology references. Project-specific content goes in `.ralph/context.md` (generated per milestone by the PRD Writer).
+6. **Ask about env setup.** If the project uses Azure, custom endpoints, or other env config, the user must tell you so you can set `env_setup`.
+7. **Gate checks must be realistic.** Don't add gate checks for tools that aren't in the project's tech stack.
+8. **Validate before saving.** Always run the verification checklist (Section 5).
+9. **If uncertain about services, ask the user.** Never guess whether a service needs a real backend vs. an in-memory mock. The user knows their project.
 10. **Confirm with user.** Show the generated config summary and get approval before finalizing.
 
 ---

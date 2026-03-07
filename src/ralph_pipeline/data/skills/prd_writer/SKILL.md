@@ -191,8 +191,8 @@ After the JSON PRD is complete, produce a **context bundle** at `.ralph/context.
 
 Extract and compile these sections from upstream docs, **only for content referenced by stories in this milestone's PRD:**
 
-1. **Architecture sections** — data model tables, API endpoints, project structure paths referenced in story notes. Copy the relevant sections verbatim from upstream docs.
-2. **Design specs** — component specs, wireframe descriptions referenced in story notes. Copy relevant sections.
+1. **Architecture sections** — data model tables, API endpoints, project structure paths referenced in story notes. Copy the relevant sections verbatim from upstream docs. **Cross-boundary extraction:** when a referenced section depends on other sections (e.g., a table has foreign keys to another table, or a component imports types from another component), include those dependency definitions too — even if they belong to a different milestone. Ralph needs the full dependency chain to implement correctly.
+2. **Design specs** — component specs, wireframe descriptions referenced in story notes. Copy relevant sections. Include shared component interfaces that this milestone's components depend on, even if those shared components were implemented in a previous milestone.
 3. **AI specs** (if applicable) — system prompts, tool schemas, model config referenced in story notes.
 4. **Test specs** — test cases from `docs/04-test-architecture/test-matrix.md` assigned to this milestone's stories. Include the full test case definitions, not just IDs. Ralph writes these tests BEFORE implementing the feature, so each test case must include: test ID, layer, description, input, and expected output — enough detail to write a failing test without seeing the implementation.
 5. **Codebase patterns** — extract only the `## Codebase Patterns` section from archived progress files (`.ralph/archive/*/progress.txt`). If no archives exist, omit this section.
@@ -200,6 +200,14 @@ Extract and compile these sections from upstream docs, **only for content refere
    - Include a project file tree (top 3 levels)
    - If the file already exists in the codebase, include its current contents (or first 200 lines if very large)
    - If the file doesn't exist yet, note it as "to be created"
+7. **Quality checks** — read the active `pipeline-config.json` to extract concrete test commands from `test_execution.tier1.environments` and `gate_checks.checks`. List every command Ralph must run before committing. These are the actual, verified commands that Phase 0 generated — not placeholders. Format as a runnable checklist so Ralph can copy-paste them.
+8. **Test infrastructure setup** — from `pipeline-config.json`, extract the Tier 1 setup/teardown commands. Include instructions for Ralph to ensure dependency services are running before the first quality check in each milestone. Format:
+   ```
+   Before your first quality check, ensure test infrastructure is running:
+   [teardown command]   # clean slate
+   [setup command]      # start dependency services
+   ```
+9. **Browser testing** (conditional) — if the project has a frontend (check `test_infrastructure.runtimes` or `gate_checks` for frontend entries), include browser testing instructions. If backend-only, omit this section entirely.
 
 ### Bundle Format
 
@@ -239,6 +247,28 @@ Extract and compile these sections from upstream docs, **only for content refere
 ### [Test ID]: [Test Name]
 [Full test case definition from test-matrix.md]
 
+## Quality Checks
+
+Run these checks before committing. ALL must pass:
+
+\`\`\`bash
+[concrete test commands from pipeline-config.json test_execution.tier1.environments]
+[concrete gate check commands from pipeline-config.json gate_checks.checks]
+\`\`\`
+
+## Test Infrastructure Setup
+
+Before your first quality check in this milestone, ensure test infrastructure is running:
+
+\`\`\`bash
+[teardown command from pipeline-config.json]   # clean slate
+[setup command from pipeline-config.json]      # start dependency services
+\`\`\`
+
+## Browser Testing (if frontend exists)
+
+[Browser testing instructions — include only if project has frontend runtime]
+
 ## Codebase Snapshot
 
 ### File Tree
@@ -262,6 +292,9 @@ Extract and compile these sections from upstream docs, **only for content refere
 3. **Codebase patterns only.** From progress.txt archives, include only the `## Codebase Patterns` section, not per-story logs.
 4. **Codebase snapshot is selective.** Only include files from story Notes `Files:` fields. For large files (>200 lines), include the first 200 lines with a note.
 5. **Overwrite per milestone.** Each milestone gets a fresh `.ralph/context.md`. No accumulation.
+6. **Extend, don't recreate.** If `.ralph/context.md` already exists from a previous PRD Writer invocation (e.g., after a bugfix PRD), merge new content into the existing bundle rather than replacing it. Preserve codebase patterns and quality checks from the existing file — only update architecture, design, test specs, and codebase snapshot sections.
+7. **Cross-boundary dependencies.** When extracting a section that has dependencies on other sections (foreign keys, imported types, shared interfaces), follow the dependency chain and include those referenced sections — even if they were defined in a different milestone's scope. Ralph cannot implement a feature correctly if it can only see half of a relationship.
+8. **Quality checks from config — not from docs.** The quality check commands in context.md must come from `pipeline-config.json` (the concrete commands Phase 0 generated), NOT from upstream specification docs. Upstream docs describe intent; the config contains verified, runnable commands.
 
 ### Context Weight Reporting
 

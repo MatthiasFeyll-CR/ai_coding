@@ -361,10 +361,11 @@ Context weight check:
 
 1. **Respect dependencies.** Never place a feature before its dependencies.
 2. **Right-size milestones.** 5-10 user stories per milestone.
-3. **M1 is always Foundation.** Infrastructure, scaffolding, schema, auth bypass — everything later milestones depend on.
-4. **Cross-reference everything.** Feature IDs, tables, endpoints, pages, components.
-5. **MVP first.** Clearly mark the boundary.
-6. **Confirm with user.** Get approval on the strategy before writing scope files.
-7. **Domain cohesion.** Group related features into the same milestone so the coding agent gets focused context.
-8. **AI features are first-class.** If AI exists, plan AI infrastructure early and agent implementations at the right dependency level.
-9. **Structured handover.** Always produce the JSON handover for the Pipeline Configurator — it needs the strategy data to generate the pipeline config.
+3. **M1 is always Foundation.** Core domain logic, schema, auth bypass — everything later milestones depend on. **Do NOT include stories for project scaffolding, directory structure creation, Docker test infrastructure, or framework boilerplate** — Phase 0 (Infrastructure Bootstrap) handles all of these automatically before the milestone loop begins.
+4. **Phase 0 owns infrastructure.** The pipeline engine runs Phase 0 once before M1 to create: project directory structure, framework boilerplate files, docker-compose.test.yml, test Dockerfiles, and all supporting infrastructure. Never create user stories for these tasks. Stories in M1 should start from "schema migration" level — assuming the project skeleton and test infrastructure already exist.
+5. **Cross-reference everything.** Feature IDs, tables, endpoints, pages, components.
+6. **MVP first.** Clearly mark the boundary.
+7. **Confirm with user.** Get approval on the strategy before writing scope files.
+8. **Domain cohesion.** Group related features into the same milestone so the coding agent gets focused context.
+9. **AI features are first-class.** If AI exists, plan AI infrastructure early and agent implementations at the right dependency level.
+10. **Structured handover.** Always produce the JSON handover for the Pipeline Configurator — it needs the strategy data to generate the pipeline config.

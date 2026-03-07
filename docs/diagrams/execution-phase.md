@@ -7,6 +7,49 @@ CLI: --resume | --milestone N | --dry-run
 
 ---
 
+## Phase 0: Infrastructure Bootstrap
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PHASE 0: INFRASTRUCTURE BOOTSTRAP         (runs once)          │
+│                                                                 │
+│  Triggered: before milestone loop, if test_infrastructure       │
+│  or scaffolding sections exist in pipeline-config.json          │
+│                                                                 │
+│  Step 1 — Scaffolding (Claude invocation):                      │
+│  ├─ Read scaffolding.project_structure_doc                      │
+│  ├─ Create all project directories                              │
+│  ├─ If framework_boilerplate: generate framework init files     │
+│  │   (Django manage.py+settings, React vite.config, etc.)       │
+│  └─ Commit: "chore: project scaffolding from architecture spec" │
+│                                                                 │
+│  Step 2 — Test Infrastructure (Claude invocation):              │
+│  ├─ Read test_infrastructure declarative spec                   │
+│  ├─ Generate docker-compose.test.yml from services + runtimes   │
+│  ├─ Generate Dockerfile.test-* for each runtime                 │
+│  └─ Commit: "chore: test infrastructure from declarative spec"  │
+│                                                                 │
+│  Step 3 — Lifecycle Verification:                               │
+│  ├─ Build test images (--no-cache)                              │
+│  ├─ Start dependency services, verify readiness                 │
+│  ├─ Run smoke test per runtime (e.g., pytest --collect-only)    │
+│  ├─ Teardown, verify clean shutdown                             │
+│  └─ If failure: Claude fix loop (max 3), then HARD STOP         │
+│                                                                 │
+│  Step 4 — Write Concrete Commands:                              │
+│  ├─ Generate test_execution section in pipeline-config.json     │
+│  │   (setup, teardown, test, build commands — both tiers)       │
+│  ├─ Remove test_infrastructure section (consumed)               │
+│  ├─ Remove scaffolding section (consumed)                       │
+│  └─ Save updated config                                        │
+│                                                                 │
+│  State: phase0_complete = true in .ralph/state.json             │
+│  Resume: if phase0_complete, skip Phase 0                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Main Loop
 
 ```
@@ -191,6 +234,7 @@ CLI: --resume | --milestone N | --dry-run
 │                                                                 │
 │  State:                                                         │
 │  ├─ .ralph/state.json              (FSM state per milestone)    │
+│  │   └─ phase0_complete: bool      (Phase 0 bootstrap status)  │
 │  └─ .ralph/logs/pipeline.jsonl     (structured event log)       │
 │                                                                 │
 │  Per-Milestone:                                                 │
@@ -219,6 +263,9 @@ CLI: --resume | --milestone N | --dry-run
 │                                                                 │
 │  Phase  Error                        Action                     │
 │  ────── ──────────────────────────── ────────────────────────── │
+│  0      Scaffolding generation fail  Retry once, HARD STOP     │
+│  0      Test infra generation fail   Retry once, HARD STOP     │
+│  0      Lifecycle verification fail  Claude fix ×3, HARD STOP  │
 │  1      PRD generation fails         Retry once, abort          │
 │  2      Ralph max iterations         Proceed to QA (partial)    │
 │  3      QA FAIL after max cycles     Escalation report, cont.   │
