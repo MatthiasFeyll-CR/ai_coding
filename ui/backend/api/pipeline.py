@@ -147,11 +147,18 @@ def get_milestones(project_id):
             with open(config_path, "r") as f:
                 config = json.load(f)
             for m in config.get("milestones", []):
-                config_milestones[m["id"]] = {
-                    "name": m.get("name", f"Milestone {m['id']}"),
-                    "slug": m.get("slug", f"m{m['id']}"),
-                    "stories": m.get("stories", 0),
-                    "dependencies": m.get("dependencies", []),
+                # milestones can be plain ints or dicts with id/name/slug
+                if isinstance(m, int):
+                    m_id = m
+                    m_data = {}
+                else:
+                    m_id = m["id"]
+                    m_data = m
+                config_milestones[m_id] = {
+                    "name": m_data.get("name", f"Milestone {m_id}"),
+                    "slug": m_data.get("slug", f"m{m_id}"),
+                    "stories": m_data.get("stories", 0),
+                    "dependencies": m_data.get("dependencies", []),
                 }
             max_bugfix_cycles = config.get("qa", {}).get("max_bugfix_cycles", 3)
         except (json.JSONDecodeError, KeyError):

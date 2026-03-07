@@ -32,7 +32,7 @@ class TestPipelineRunnerInit:
             db.session.commit()
 
             runner = PipelineRunner(project)
-            assert runner.project == project
+            assert runner.project_id == project.id
             assert runner.milestone_id is None
             assert runner.resume is False
             assert runner.process is None
@@ -342,6 +342,7 @@ class TestPipelineRunnerRunPipeline:
 
                 runner._run_pipeline()
 
+            db.session.refresh(project)
             assert project.status == "success"
 
     def test_sets_error_status_on_nonzero_exit(self, app, sample_project_with_config):
@@ -373,6 +374,7 @@ class TestPipelineRunnerRunPipeline:
 
                 runner._run_pipeline()
 
+            db.session.refresh(project)
             assert project.status == "error"
 
     def test_removes_lock_on_exception(self, app, sample_project_with_config):

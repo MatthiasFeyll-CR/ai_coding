@@ -99,7 +99,7 @@ def _run_scaffolding(
     try:
         claude.run(
             prompt,
-            model=config.models.prd_generation,  # Use cost-optimized model
+            model=config.models.phase0,
             phase="phase0_scaffolding",
             milestone=0,
             log_file=log_file,
@@ -140,7 +140,7 @@ def _run_test_infra_generation(
     try:
         claude.run(
             prompt,
-            model=config.models.prd_generation,  # Use cost-optimized model
+            model=config.models.phase0,
             phase="phase0_test_infra",
             milestone=0,
             log_file=log_file,
@@ -187,7 +187,7 @@ def _run_lifecycle_verification(
     try:
         claude.run(
             prompt,
-            model="",  # Use default (Opus) for verification — needs tool use
+            model=config.models.phase0,
             phase="phase0_lifecycle",
             milestone=0,
             log_file=log_file,

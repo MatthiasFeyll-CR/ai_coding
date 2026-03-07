@@ -17,6 +17,7 @@ from ralph_pipeline.infra.regression import RegressionAnalyzer
 from ralph_pipeline.infra.test_infra import TestInfraManager
 from ralph_pipeline.infra.test_runner import TestRunner
 from ralph_pipeline.log import PipelineLogger
+from ralph_pipeline.phases.phase0_bootstrap import Phase0Error, run_phase0_bootstrap
 from ralph_pipeline.runner import MilestoneRunner
 from ralph_pipeline.state import PipelineState
 from ralph_pipeline.subprocess_utils import set_dry_run
@@ -177,6 +178,59 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
     # Register atexit teardown (design §5.6)
     atexit.register(infra.teardown_all)
+
+    # Phase 0: Infrastructure Bootstrap (runs once before milestone loop)
+    has_phase0_work = config.test_infrastructure or config.scaffolding
+    any_milestone_started = any(
+        ms.phase != "pending" for ms in state.milestones.values()
+    )
+    if has_phase0_work and not state.phase0_complete and not any_milestone_started:
+        from datetime import datetime, timezone
+
+        plogger.section("Phase 0: Infrastructure Bootstrap")
+        plogger.info(
+            "Phase 0 triggered — scaffolding and/or test infrastructure configured"
+        )
+        state.phase0_started_at = (
+            datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        )
+        state.save(state_file)
+        try:
+            run_phase0_bootstrap(
+                config=config,
+                claude=claude,
+                plogger=plogger,
+                project_root=project_root,
+                config_path=config_path,
+            )
+            state.phase0_complete = True
+            state.phase0_completed_at = (
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            )
+            state.save(state_file)
+            plogger.success("Phase 0 complete — state.json updated")
+            # Reload config after Phase 0 write-back
+            config = PipelineConfig.load(config_path)
+            plogger.info("Config reloaded after Phase 0 write-back")
+        except Phase0Error as e:
+            plogger.error(f"Phase 0 failed: {e}")
+            state.save(state_file)
+            sys.exit(1)
+    elif has_phase0_work and not state.phase0_complete and any_milestone_started:
+        plogger.warning(
+            "Phase 0 was not run but milestones already started — "
+            "skipping Phase 0 to avoid conflicts (scaffolding may have been done inline by Ralph)"
+        )
+        state.phase0_complete = True
+        state.save(state_file)
+    elif has_phase0_work and state.phase0_complete:
+        plogger.info(
+            f"Phase 0 already complete (finished at {state.phase0_completed_at}), skipping"
+        )
+    else:
+        plogger.info(
+            "Phase 0: not needed (no scaffolding or test_infrastructure configured)"
+        )
 
     # Auto-validate infra before first milestone (design §8.2)
     if not args.dry_run and (
@@ -426,5 +480,9 @@ def main() -> None:
         validate_infra(args)
     else:
         parser.print_help()
+        sys.exit(0)
+        sys.exit(0)
+        sys.exit(0)
+        sys.exit(0)
         sys.exit(0)
         sys.exit(0)

@@ -68,6 +68,7 @@ src/ralph_pipeline/infra/test_infra.py
 src/ralph_pipeline/infra/test_runner.py
 src/ralph_pipeline/phases/__init__.py
 src/ralph_pipeline/phases/merge_verify.py
+src/ralph_pipeline/phases/phase0_bootstrap.py
 src/ralph_pipeline/phases/prd_generation.py
 src/ralph_pipeline/phases/qa_review.py
 src/ralph_pipeline/phases/ralph_execution.py
@@ -77,6 +78,7 @@ tests/test_ai_env.py
 tests/test_cli.py
 tests/test_config.py
 tests/test_health.py
+tests/test_phase0.py
 tests/test_prompts.py
 tests/test_ralph_loop.py
 tests/test_regression.py

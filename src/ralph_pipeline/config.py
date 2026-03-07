@@ -38,6 +38,7 @@ class ModelsConfig(BaseModel):
     Empty string = CLI default (typically Opus)."""
 
     ralph: str = ""
+    phase0: str = ""
     prd_generation: str = ""
     qa_review: str = ""
     test_fix: str = ""
@@ -124,6 +125,74 @@ class EnvSetupConfig(BaseModel):
     setup_function: Optional[str] = None
 
 
+# ── Phase 0: Infrastructure Bootstrap config models ──
+
+
+class TestInfraServiceConfig(BaseModel):
+    """Declarative service definition for test infrastructure (Phase 0 input)."""
+
+    name: str
+    image: str
+    port: int
+    environment: dict[str, str] = {}
+    readiness: str = ""  # e.g. "pg_isready -U postgres"
+
+
+class TestInfraRuntimeConfig(BaseModel):
+    """Declarative runtime definition — container to execute tests in."""
+
+    name: str
+    base_image: str = ""
+    source_dir: str = "."
+    workdir: str = "/app"
+    dependency_files: list[str] = []
+    install_cmd: str = ""
+    test_framework: str = ""
+    test_cmd: str = ""
+    ci_flags: str = ""
+
+
+class TestInfraDatabaseConfig(BaseModel):
+    """Database configuration for test infrastructure."""
+
+    service: str  # Reference to a TestInfraServiceConfig name
+    db_name: str = "testdb"
+    user: str = "postgres"
+    password: str = "postgres"
+
+
+class TestInfraTimeoutsConfig(BaseModel):
+    """Timeout configuration for Phase 0 infrastructure lifecycle."""
+
+    setup_seconds: int = 120
+    build_seconds: int = 300
+    test_seconds: int = 300
+
+
+class TestInfrastructureConfig(BaseModel):
+    """Declarative test infrastructure spec — Phase 0 input.
+
+    The pipeline configurator writes this section; Phase 0 reads it,
+    generates concrete docker-compose + Dockerfiles, verifies lifecycle,
+    and replaces it with concrete test_execution commands.
+    """
+
+    compose_file: str = "docker-compose.test.yml"
+    services: list[TestInfraServiceConfig] = []
+    runtimes: list[TestInfraRuntimeConfig] = []
+    databases: list[TestInfraDatabaseConfig] = []
+    timeouts: TestInfraTimeoutsConfig = TestInfraTimeoutsConfig()
+
+
+class ScaffoldingConfig(BaseModel):
+    """Phase 0 scaffolding — project structure + boilerplate generation."""
+
+    enabled: bool = True
+    project_structure_doc: str = ""  # Path to architecture doc defining structure
+    tech_stack_doc: str = ""  # Path to tech stack doc
+    framework_boilerplate: bool = True  # Generate framework boilerplate files
+
+
 class AIEnvConfig(BaseModel):
     """AI credentials configuration — .ai.env file in the target project."""
 
@@ -149,6 +218,8 @@ class PipelineConfig(BaseModel):
     test_execution: TestExecutionConfig = TestExecutionConfig()
     env_setup: EnvSetupConfig = EnvSetupConfig()  # Legacy — ignored
     ai_env: AIEnvConfig = AIEnvConfig()
+    test_infrastructure: Optional[TestInfrastructureConfig] = None
+    scaffolding: Optional[ScaffoldingConfig] = None
     retry: RetryConfig = RetryConfig()
 
     @field_validator("milestones")

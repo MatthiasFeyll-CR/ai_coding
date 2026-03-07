@@ -216,3 +216,120 @@ Instructions:
 - Auto-apply ALL changes (pipeline trusts QA — no manual approval needed)
 - Update spec docs to match reality where implementation deviated
 - Record all changes in {recon_dir}/m{milestone}-changes.md"""
+
+
+# ── Phase 0: Infrastructure Bootstrap prompts ──
+
+
+def phase0_scaffolding_prompt(
+    project_structure_doc: str,
+    tech_stack_doc: str,
+    project_root: str,
+    framework_boilerplate: bool,
+) -> str:
+    """Build the scaffolding prompt for Phase 0 — creates project skeleton."""
+    boilerplate_instruction = ""
+    if framework_boilerplate:
+        boilerplate_instruction = """- Generate framework boilerplate files (config files, package manifests, entry points).
+- Include minimal working examples where appropriate (e.g., a hello-world route, a base model)."""
+
+    docs_instruction = ""
+    if project_structure_doc:
+        docs_instruction += (
+            f"\n- Read the project structure doc at {project_structure_doc}"
+        )
+    if tech_stack_doc:
+        docs_instruction += f"\n- Read the tech stack doc at {tech_stack_doc}"
+
+    return f"""You are Phase 0 — Infrastructure Bootstrap: Scaffolding.
+
+Working directory: {project_root}
+
+Your task is to create the project directory structure and boilerplate files.
+{docs_instruction}
+- Read ALL upstream architecture and design docs to understand the full project structure.
+
+Instructions:
+- Create ALL directories defined in the architecture docs (src/, tests/, configs, etc.)
+- Create placeholder files (__init__.py, .gitkeep) so the structure is ready for milestone code.
+{boilerplate_instruction}
+- Do NOT implement any business logic — only create the skeleton.
+- Commit all scaffolding with message: "chore: Phase 0 — project scaffolding"
+"""
+
+
+def phase0_test_infra_prompt(
+    test_infrastructure_json: str,
+    project_root: str,
+    compose_file: str,
+) -> str:
+    """Build the test infrastructure generation prompt for Phase 0."""
+    return f"""You are Phase 0 — Infrastructure Bootstrap: Test Infrastructure.
+
+Working directory: {project_root}
+
+Your task is to generate the test infrastructure files from the declarative specification below.
+
+## Test Infrastructure Specification (from pipeline-config.json):
+```json
+{test_infrastructure_json}
+```
+
+Instructions:
+- Generate {compose_file} with all declared services, runtimes, databases, and networks.
+- Generate any required Dockerfiles referenced by the compose file.
+- For each runtime: create a Dockerfile that installs dependencies and sets up the test environment.
+- For each service: use the declared image, port, environment, and readiness probe.
+- For each database: configure the service with the declared credentials and database name.
+- Ensure services can communicate via Docker networking (use a shared network).
+- Include health checks in compose for all services with readiness probes.
+- Do NOT run or start the containers — only generate the files.
+- Commit all infrastructure files with message: "chore: Phase 0 — test infrastructure"
+"""
+
+
+def phase0_lifecycle_verify_prompt(
+    project_root: str,
+    compose_file: str,
+    test_infrastructure_json: str,
+) -> str:
+    """Build the lifecycle verification prompt for Phase 0."""
+    return f"""You are Phase 0 — Infrastructure Bootstrap: Lifecycle Verification.
+
+Working directory: {project_root}
+
+Your task is to verify that the test infrastructure works end-to-end.
+
+## Test Infrastructure Specification:
+```json
+{test_infrastructure_json}
+```
+
+Compose file: {compose_file}
+
+Instructions — run these steps IN ORDER:
+1. **Build**: Run `docker compose -f {compose_file} build` — verify all images build successfully.
+2. **Setup**: Run `docker compose -f {compose_file} up -d` — verify all services start.
+3. **Health**: Check that all services with readiness probes pass their health checks.
+4. **Smoke**: For each runtime, run a minimal test command (e.g., `docker compose -f {compose_file} exec <runtime> <test_cmd> --co` to collect tests without running).
+5. **Teardown**: Run `docker compose -f {compose_file} down -v` — verify clean shutdown.
+
+For each step, report:
+- PASS or FAIL
+- If FAIL: fix the infrastructure files and retry (up to 2 attempts per step).
+- Commit any fixes with message: "fix: Phase 0 — <what was fixed>"
+
+After ALL steps pass, write a verification report to .ralph/phase0-verification.json:
+```json
+{{
+  "verified": true,
+  "compose_file": "{compose_file}",
+  "steps": {{"build": "pass", "setup": "pass", "health": "pass", "smoke": "pass", "teardown": "pass"}},
+  "test_commands": {{
+    "<runtime_name>": "<concrete test command that works>"
+  }}
+}}
+```
+
+If ANY step still fails after retries, write verified=false with details of the failure.
+"""

@@ -29,6 +29,9 @@ class PipelineState(BaseModel):
     current_milestone: int
     milestones: dict[int, MilestoneState] = {}
     test_milestone_map: dict[str, int] = {}
+    phase0_complete: bool = False
+    phase0_started_at: Optional[str] = None
+    phase0_completed_at: Optional[str] = None
     timestamp: str = ""
 
     def save(self, path: Path) -> None:

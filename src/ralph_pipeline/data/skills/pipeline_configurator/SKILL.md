@@ -102,12 +102,13 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
   ],
 
   "models": {
-    "ralph": "",
-    "prd_generation": "",
-    "qa_review": "",
-    "test_fix": "",
-    "gate_fix": "",
-    "reconciliation": ""
+    "ralph": "claude-opus-4-6",
+    "phase0": "claude-sonnet-4-5",
+    "prd_generation": "claude-sonnet-4-5",
+    "qa_review": "claude-sonnet-4-5",
+    "test_fix": "claude-opus-4-6",
+    "gate_fix": "claude-opus-4-6",
+    "reconciliation": "claude-sonnet-4-5"
   },
 
   "ralph": {
@@ -236,14 +237,18 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
 **Generation rules:**
 
 1. **milestones:** Populate from strategy handover `strategy.milestones` array. Array order = execution order.
-2. **models:** Controls which Claude model is used for each pipeline phase. Empty string (`""`) uses the CLI default (typically Opus). Set specific model IDs to use cheaper models for phases that don't need maximum capability. Recommended defaults:
-   - `ralph`: `""` (Opus — complex code generation needs the strongest model)
-   - `prd_generation`: `"claude-sonnet-4-6"` (structured extraction from specs)
-   - `qa_review`: `"claude-sonnet-4-6"` (comparing code against checklist)
-   - `test_fix`: `""` (Opus — debugging test failures needs strong reasoning)
-   - `gate_fix`: `""` (Opus — debugging regressions)
-   - `reconciliation`: `"claude-sonnet-4-6"` (diffing changes against specs)
-   Ask the user if they want to customize model selection. If they want maximum quality on all phases, leave all empty. If they want to optimize costs, apply the recommended defaults above.
+2. **models:** Controls which Claude model is used for each pipeline phase. Available models:
+   - `claude-opus-4-6` — strongest reasoning, use for complex code generation and debugging
+   - `claude-sonnet-4-5` — fast and cost-effective, use for structured/checklist tasks
+
+   **Always use cost optimization.** Do NOT ask the user whether to optimize costs or use maximum quality. Always use these exact assignments:
+   - `ralph`: `"claude-opus-4-6"` (complex code generation needs the strongest model)
+   - `phase0`: `"claude-sonnet-4-5"` (scaffolding and test infra generation)
+   - `prd_generation`: `"claude-sonnet-4-5"` (structured extraction from specs)
+   - `qa_review`: `"claude-sonnet-4-5"` (comparing code against checklist)
+   - `test_fix`: `"claude-opus-4-6"` (debugging test failures needs strong reasoning)
+   - `gate_fix`: `"claude-opus-4-6"` (debugging regressions)
+   - `reconciliation`: `"claude-sonnet-4-5"` (diffing changes against specs)
 3. **gate_checks:** Determine from `tech-stack.md`:
    - If Docker Compose exists → add Docker build check
    - If frontend is TypeScript → add tsc check
@@ -280,7 +285,7 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
    - `tech_stack_doc`: Path to the tech stack doc. Phase 0 uses this to determine which framework boilerplate to generate.
    - `framework_boilerplate`: Whether Phase 0 should create framework initialization files (e.g., Django `manage.py` + settings, React `vite.config.ts` + `index.html`, Flask `app.py` + factory pattern). Set `true` for greenfield projects. Set `false` if the project already has a codebase.
 
-6. **env_setup:** Ask the user if they have a shell setup script (like Azure endpoint config). If yes, set `source_file` and `setup_function`.
+6. **env_setup:** Always set `source_file` and `setup_function` to `null`. The project's `.env` file covers all necessary configuration (ports, access tokens, Azure credentials, etc.). Do NOT ask the user about shell setup scripts — none are needed.
 7. **paths:** Use standard conventions, confirm with user if non-standard.
 
 ### 4.2 .ralph/CLAUDE.md
@@ -439,7 +444,7 @@ After config is generated and verified:
 3. **Scan ALL milestone scopes.** Read every `docs/05-milestones/milestone-*.md` file to enumerate the full set of services and runtimes. A service mentioned only in M4 must still appear in `test_infrastructure.services` — Phase 0 creates infrastructure for the entire project lifecycle upfront.
 4. **Extract database names explicitly.** Check test settings files (Django `settings/test.py`, etc.), test architecture docs, and environment variables to find actual test database names. Wrong DB names cause silent failures.
 5. **CLAUDE.md is process-only.** It contains workflow rules and a pointer to `context.md`. No quality check commands, no test instructions, no technology references. Project-specific content goes in `.ralph/context.md` (generated per milestone by the PRD Writer).
-6. **Ask about env setup.** If the project uses Azure, custom endpoints, or other env config, the user must tell you so you can set `env_setup`.
+6. **env_setup is always null.** The `.env` file handles all environment configuration (ports, access tokens, Azure credentials). Never ask the user about shell setup scripts.
 7. **Gate checks must be realistic.** Don't add gate checks for tools that aren't in the project's tech stack.
 8. **Validate before saving.** Always run the verification checklist (Section 5).
 9. **If uncertain about services, ask the user.** Never guess whether a service needs a real backend vs. an in-memory mock. The user knows their project.

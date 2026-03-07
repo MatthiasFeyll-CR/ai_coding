@@ -234,7 +234,9 @@ class TestGetMilestones:
     def test_milestones_no_state(self, client, linked_project):
         resp = client.get(f"/api/pipeline/{linked_project['id']}/milestones")
         assert resp.status_code == 200
-        assert resp.get_json() == []
+        data = resp.get_json()
+        assert "milestones" in data
+        assert "max_bugfix_cycles" in data
 
     def test_milestones_with_state(self, client, linked_project_with_state):
         resp = client.get(
@@ -242,7 +244,8 @@ class TestGetMilestones:
         )
         assert resp.status_code == 200
         data = resp.get_json()
-        assert len(data) == 2
-        ids = [m["id"] for m in data]
+        milestones = data["milestones"]
+        assert len(milestones) == 2
+        ids = [m["id"] for m in milestones]
         assert 1 in ids
         assert 2 in ids
