@@ -16,6 +16,9 @@ from ralph_pipeline.infra.health import ServiceHealthChecker
 from ralph_pipeline.infra.regression import RegressionAnalyzer
 from ralph_pipeline.infra.test_infra import TestInfraManager
 from ralph_pipeline.infra.test_runner import TestRunner
+from ralph_pipeline.lockfile import LockfileError
+from ralph_pipeline.lockfile import acquire as acquire_lock
+from ralph_pipeline.lockfile import release as release_lock
 from ralph_pipeline.log import PipelineLogger
 from ralph_pipeline.phases.phase0_bootstrap import Phase0Error, run_phase0_bootstrap
 from ralph_pipeline.runner import MilestoneRunner
@@ -71,6 +74,7 @@ def _setup_signal_handlers(
     plogger: PipelineLogger,
     config: PipelineConfig,
     infra: TestInfraManager,
+    project_root: Path,
 ) -> None:
     """Register signal handlers for graceful shutdown."""
 
@@ -84,6 +88,7 @@ def _setup_signal_handlers(
             infra.teardown_all()
         except Exception:
             pass
+        release_lock(project_root)
         plogger.show_summary(state, config)
         sys.exit(128 + signum)
 
@@ -104,6 +109,16 @@ def run_pipeline(args: argparse.Namespace) -> None:
     # Set up dry-run mode
     if args.dry_run:
         set_dry_run(True)
+
+    # Acquire lock file (prevents concurrent executions)
+    if not args.dry_run:
+        try:
+            acquire_lock(project_root, source="cli")
+        except LockfileError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        # Ensure lock is released on any exit path
+        atexit.register(release_lock, project_root)
 
     # Initialize services
     plogger = PipelineLogger()
@@ -131,12 +146,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
             plogger.error(str(e))
             sys.exit(1)
 
-    claude = ClaudeRunner(config.retry, event_logger, plogger, env=claude_env)
-    test_runner = TestRunner(
-        config.test_execution, infra, claude, plogger, project_root, git
-    )
-
-    # Load or initialize state
+    # Load or initialize state (before ClaudeRunner so we can pass cost tracker)
     if args.resume and state_file.exists():
         plogger.info("Resuming from saved state...")
         state = PipelineState.load(state_file)
@@ -173,8 +183,20 @@ def run_pipeline(args: argparse.Namespace) -> None:
         state = PipelineState.initialize(config, base_branch)
         state.save(state_file)
 
+    claude = ClaudeRunner(
+        config.retry,
+        event_logger,
+        plogger,
+        env=claude_env,
+        cost_tracker=state.cost,
+        budget_usd=config.cost.budget_usd,
+    )
+    test_runner = TestRunner(
+        config.test_execution, infra, claude, plogger, project_root, git
+    )
+
     # Register signal handlers
-    _setup_signal_handlers(state, state_file, plogger, config, infra)
+    _setup_signal_handlers(state, state_file, plogger, config, infra, project_root)
 
     # Register atexit teardown (design §5.6)
     atexit.register(infra.teardown_all)
@@ -480,6 +502,10 @@ def main() -> None:
         validate_infra(args)
     else:
         parser.print_help()
+        sys.exit(0)
+        sys.exit(0)
+        sys.exit(0)
+        sys.exit(0)
         sys.exit(0)
         sys.exit(0)
         sys.exit(0)

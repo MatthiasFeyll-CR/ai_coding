@@ -103,7 +103,7 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
 
   "models": {
     "ralph": "claude-opus-4-6",
-    "phase0": "claude-sonnet-4-5",
+    "phase0": "claude-opus-4-6",
     "prd_generation": "claude-sonnet-4-5",
     "qa_review": "claude-sonnet-4-5",
     "test_fix": "claude-opus-4-6",

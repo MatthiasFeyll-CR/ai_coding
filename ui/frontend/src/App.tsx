@@ -7,6 +7,7 @@ import { ReinstantiateModal } from './components/modals/ReinstantiateModal';
 import { DashboardPage } from './pages/DashboardPage';
 import { EditorPage } from './pages/EditorPage';
 import { RequirementsPage } from './pages/RequirementsPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="editor/:projectId" element={<EditorPage />} />
           <Route path="requirements" element={<RequirementsPage />} />
           <Route path="requirements/:projectId" element={<RequirementsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>
 

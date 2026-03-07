@@ -20,9 +20,20 @@ const PHASES = [
   { id: 'reconciliation', label: 'Reconciliation' },
 ] as const;
 
+const PHASE0_PHASES = [
+  { id: 'phase0_scaffolding', label: 'Scaffolding' },
+  { id: 'phase0_test_infra', label: 'Test Infrastructure' },
+  { id: 'phase0_lifecycle', label: 'Lifecycle Verify' },
+] as const;
+
 const PHASE_ORDER: Record<string, number> = {};
 PHASES.forEach((p, i) => {
   PHASE_ORDER[p.id] = i;
+});
+
+const PHASE0_ORDER: Record<string, number> = {};
+PHASE0_PHASES.forEach((p, i) => {
+  PHASE0_ORDER[p.id] = i;
 });
 
 interface PhaseFlowProps {
@@ -39,12 +50,13 @@ function getPhaseStatus(
   phaseId: string,
   currentPhase: string,
   milestoneCompleted: boolean,
-  pipelineStatus: string
+  pipelineStatus: string,
+  phaseOrder: Record<string, number> = PHASE_ORDER
 ): PhaseStatus {
-  if (milestoneCompleted) return 'completed';
+  if (milestoneCompleted || currentPhase === 'complete') return 'completed';
 
-  const currentIdx = PHASE_ORDER[currentPhase] ?? -1;
-  const phaseIdx = PHASE_ORDER[phaseId] ?? -1;
+  const currentIdx = phaseOrder[currentPhase] ?? -1;
+  const phaseIdx = phaseOrder[phaseId] ?? -1;
 
   if (phaseIdx < currentIdx) return 'completed';
   if (phaseIdx === currentIdx) {
@@ -114,26 +126,29 @@ export function PhaseFlow({
 }: PhaseFlowProps) {
   const isCompleted = !!milestone.completed_at;
   const hasBugfixCycles = milestone.bugfix_cycle > 0;
+  const isPhase0 = milestone.id === 0;
+  const activePhases = isPhase0 ? PHASE0_PHASES : PHASES;
+  const activePhaseOrder = isPhase0 ? PHASE0_ORDER : PHASE_ORDER;
 
   const { nodes, edges } = useMemo(() => {
     const NODE_WIDTH = 150;
     const NODE_GAP = 30;
 
-    const nodes: Node<PhaseNodeData>[] = PHASES.map((phase, index) => ({
+    const nodes: Node<PhaseNodeData>[] = activePhases.map((phase, index) => ({
       id: phase.id,
       type: 'phase',
       position: { x: index * (NODE_WIDTH + NODE_GAP), y: 40 },
       data: {
         label: phase.label,
-        status: getPhaseStatus(phase.id, milestone.phase, isCompleted, pipelineStatus),
+        status: getPhaseStatus(phase.id, milestone.phase, isCompleted, pipelineStatus, activePhaseOrder),
       },
       draggable: false,
       selectable: false,
     }));
 
-    const edges: Edge[] = PHASES.slice(0, -1).map((phase, index) => {
-      const nextPhase = PHASES[index + 1];
-      const phaseStatus = getPhaseStatus(phase.id, milestone.phase, isCompleted, pipelineStatus);
+    const edges: Edge[] = activePhases.slice(0, -1).map((phase, index) => {
+      const nextPhase = activePhases[index + 1];
+      const phaseStatus = getPhaseStatus(phase.id, milestone.phase, isCompleted, pipelineStatus, activePhaseOrder);
       return {
         id: `${phase.id}-${nextPhase.id}`,
         source: phase.id,
@@ -148,8 +163,8 @@ export function PhaseFlow({
       };
     });
 
-    // Add QA → Ralph backloop edge if bugfix cycles occurred
-    if (hasBugfixCycles) {
+    // Add QA → Ralph backloop edge if bugfix cycles occurred (only for regular milestones)
+    if (hasBugfixCycles && !isPhase0) {
       edges.push({
         id: 'qa-bugfix-loop',
         source: 'qa_review',
@@ -171,7 +186,7 @@ export function PhaseFlow({
     }
 
     return { nodes, edges };
-  }, [milestone, isCompleted, hasBugfixCycles, maxBugfixCycles, pipelineStatus]);
+  }, [milestone, isCompleted, hasBugfixCycles, isPhase0, activePhases, activePhaseOrder, maxBugfixCycles, pipelineStatus]);
 
   return (
     <div className="flex flex-col gap-3">

@@ -4,9 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
-import { PlusIcon } from 'lucide-react';
+import { PlusIcon, SettingsIcon } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const STATUS_CONFIG: Record<string, { color: string; label: string; description: string }> = {
   initialized: {
@@ -44,6 +44,11 @@ const STATUS_CONFIG: Record<string, { color: string; label: string; description:
     label: 'Configuring',
     description: 'Pipeline configuration in progress',
   },
+  stopped: {
+    color: 'bg-status-warning',
+    label: 'Stopped',
+    description: 'Pipeline was stopped — can be resumed',
+  },
 };
 
 function StatusIndicator({ status }: { status: string }) {
@@ -78,6 +83,8 @@ export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar, activeProject, setActiveProject, openModal } =
     useAppStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isSettingsActive = location.pathname === '/settings';
 
   const { data: projects, isLoading } = useQuery({
     queryKey: ['projects'],
@@ -183,6 +190,24 @@ export function Sidebar() {
             <div className="text-center text-text-muted text-sm">No projects yet</div>
           )
         )}
+      </div>
+
+      {/* Settings link at bottom */}
+      <div className="border-t border-border-subtle p-4">
+        <button
+          onClick={() => navigate('/settings')}
+          className={clsx(
+            'w-full rounded-lg transition-colors',
+            'hover:bg-bg-tertiary',
+            sidebarCollapsed ? 'p-2 flex items-center justify-center' : 'p-3 flex items-center gap-3',
+            isSettingsActive && 'bg-bg-tertiary border-l-4 border-accent-cyan'
+          )}
+        >
+          <SettingsIcon className="w-5 h-5 text-text-muted shrink-0" />
+          {!sidebarCollapsed && (
+            <span className="font-medium text-sm">Settings</span>
+          )}
+        </button>
       </div>
     </motion.aside>
   );

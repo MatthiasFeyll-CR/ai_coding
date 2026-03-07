@@ -50,37 +50,37 @@ class MilestoneRunner:
             "trigger": "start",
             "source": "pending",
             "dest": "prd_generation",
-            "before": "_on_phase_start",
+            "after": "_on_phase_start",
         },
         {
             "trigger": "prd_done",
             "source": "prd_generation",
             "dest": "ralph_execution",
-            "before": "_on_phase_start",
+            "after": "_on_phase_start",
         },
         {
             "trigger": "ralph_done",
             "source": "ralph_execution",
             "dest": "qa_review",
-            "before": "_on_phase_start",
+            "after": "_on_phase_start",
         },
         {
             "trigger": "qa_passed",
             "source": "qa_review",
             "dest": "merge_verify",
-            "before": "_on_phase_start",
+            "after": "_on_phase_start",
         },
         {
             "trigger": "qa_needs_fix",
             "source": "qa_review",
             "dest": "ralph_execution",
-            "before": "_on_bugfix",
+            "after": "_on_bugfix",
         },
         {
             "trigger": "merge_done",
             "source": "merge_verify",
             "dest": "reconciliation",
-            "before": "_on_phase_start",
+            "after": "_on_phase_start",
         },
         {
             "trigger": "reconciled",
@@ -137,7 +137,7 @@ class MilestoneRunner:
         )
 
     def _on_phase_start(self) -> None:
-        """Called before each state transition — persist state."""
+        """Called after each state transition — persist new state for resume."""
         self.plogger.info(f"M{self.milestone.id}: transitioning to next phase")
         self._persist_state()
 

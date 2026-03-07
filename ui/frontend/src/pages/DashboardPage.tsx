@@ -1,5 +1,4 @@
 import { pipelineApi, projectsApi } from '@/api/client';
-import { InfrastructureTab } from '@/components/infrastructure/InfrastructureTab';
 import { SetupFlow } from '@/components/infrastructure/SetupFlow';
 import { ControlPanel } from '@/components/pipeline/ControlPanel';
 import { MilestoneDetail } from '@/components/pipeline/MilestoneDetail';
@@ -17,26 +16,36 @@ import {
   DollarSignIcon,
   FolderOpenIcon,
   GitBranchIcon,
-  SettingsIcon,
+  LockIcon,
+  WrenchIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
-type TabId = 'state' | 'git' | 'costs' | 'tests' | 'infrastructure';
+type TabId = 'setup' | 'state' | 'git' | 'costs' | 'tests';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  { id: 'setup', label: 'Setup', icon: <WrenchIcon className="w-4 h-4" /> },
   { id: 'state', label: 'Pipeline State', icon: <ActivityIcon className="w-4 h-4" /> },
   { id: 'git', label: 'Git Operations', icon: <GitBranchIcon className="w-4 h-4" /> },
   { id: 'costs', label: 'Cost Tracking', icon: <DollarSignIcon className="w-4 h-4" /> },
   { id: 'tests', label: 'Test Results', icon: <BeakerIcon className="w-4 h-4" /> },
-  { id: 'infrastructure', label: 'Infrastructure', icon: <SettingsIcon className="w-4 h-4" /> },
 ];
 
 export function DashboardPage() {
   const { activeProject, setActiveProject } = useAppStore();
-  const [activeTab, setActiveTab] = useState<TabId>('state');
+  const [searchParams, setSearchParams] = useSearchParams();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const [tooltipTab, setTooltipTab] = useState<string | null>(null);
+
+  // Read active tab from URL, default to 'state'
+  const urlTab = searchParams.get('tab') as TabId | null;
+  const activeTab: TabId = urlTab && TABS.some((t) => t.id === urlTab) ? urlTab : 'state';
+
+  const setActiveTab = (tab: TabId) => {
+    setSearchParams({ tab }, { replace: true });
+  };
 
   // If URL has a projectId but no activeProject (or different one), load it
   const { data: urlProject } = useQuery({
@@ -55,9 +64,19 @@ export function DashboardPage() {
   // Sync store → URL (when project changes via sidebar/modal, update URL)
   useEffect(() => {
     if (activeProject && (!projectId || Number(projectId) !== activeProject.id)) {
-      navigate(`/dashboard/${activeProject.id}`, { replace: true });
+      navigate(`/dashboard/${activeProject.id}?tab=${activeTab}`, { replace: true });
     }
-  }, [activeProject, projectId, navigate]);
+  }, [activeProject, projectId, navigate, activeTab]);
+
+  // Auto-navigate to setup tab if project needs setup and no tab is specified
+  useEffect(() => {
+    if (activeProject && !activeProject.is_setup && !urlTab) {
+      setSearchParams({ tab: 'setup' }, { replace: true });
+    }
+  }, [activeProject, urlTab, setSearchParams]);
+
+  // Determine if non-setup tabs should be disabled
+  const setupRequired = !!activeProject && !activeProject.is_setup;
 
   // Fetch pipeline state (only poll when project is fully set up)
   const { data: pipelineState } = useQuery({
@@ -112,11 +131,6 @@ export function DashboardPage() {
     );
   }
 
-  // Check if project needs setup
-  if (!activeProject.is_setup) {
-    return <SetupFlow project={activeProject} />;
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -133,20 +147,51 @@ export function DashboardPage() {
       {/* Tabs */}
       <div className="border-b border-border-subtle">
         <div className="flex space-x-1">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-bg-secondary text-accent-cyan border-b-2 border-accent-cyan'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
-              }`}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          ))}
+          {TABS.map((tab) => {
+            const isDisabled = setupRequired && tab.id !== 'setup';
+            const isActive = activeTab === tab.id;
+
+            return (
+              <div
+                key={tab.id}
+                className="relative"
+                onMouseEnter={() => isDisabled ? setTooltipTab(tab.id) : null}
+                onMouseLeave={() => setTooltipTab(null)}
+              >
+                <button
+                  onClick={() => {
+                    if (isDisabled) {
+                      setTooltipTab(tab.id);
+                      return;
+                    }
+                    setActiveTab(tab.id);
+                  }}
+                  className={`flex items-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
+                    isActive
+                      ? 'bg-bg-secondary text-accent-cyan border-b-2 border-accent-cyan'
+                      : isDisabled
+                      ? 'text-text-muted cursor-not-allowed opacity-50'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
+                  }`}
+                  disabled={isDisabled}
+                >
+                  {isDisabled && <LockIcon className="w-3 h-3" />}
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </button>
+
+                {/* Tooltip for disabled tabs */}
+                {isDisabled && tooltipTab === tab.id && (
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 w-56 px-3 py-2 bg-bg-secondary border border-border-subtle rounded-lg shadow-xl text-center">
+                    <p className="text-xs text-text-secondary">
+                      Complete all setup checks first before accessing this tab.
+                    </p>
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-bg-secondary border-l border-t border-border-subtle rotate-45" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -160,6 +205,10 @@ export function DashboardPage() {
           transition={{ duration: 0.18, ease: 'easeInOut' }}
           className="flex-1"
         >
+        {activeTab === 'setup' && (
+          <SetupFlow project={activeProject} onSetupComplete={() => setActiveTab('state')} />
+        )}
+
         {activeTab === 'state' && (
           <div className="flex gap-0 h-[calc(100vh-220px)] rounded-xl border border-white/[0.06] overflow-hidden">
             {/* Left panel — Milestone Flow (30%) */}
@@ -264,10 +313,6 @@ export function DashboardPage() {
               )}
             </div>
           </Card>
-        )}
-
-        {activeTab === 'infrastructure' && (
-          <InfrastructureTab projectId={activeProject.id} />
         )}
         </motion.div>
       </AnimatePresence>

@@ -205,6 +205,13 @@ class RetryConfig(BaseModel):
     backoff_seconds: int = 30
 
 
+class CostConfig(BaseModel):
+    """Cost tracking and budget configuration."""
+
+    budget_usd: float = 0.0  # 0 = no budget limit
+    warn_at_pct: float = 80.0  # Warn when this % of budget is consumed
+
+
 class PipelineConfig(BaseModel):
     """Top-level pipeline configuration. Loaded from pipeline-config.json."""
 
@@ -221,6 +228,7 @@ class PipelineConfig(BaseModel):
     test_infrastructure: Optional[TestInfrastructureConfig] = None
     scaffolding: Optional[ScaffoldingConfig] = None
     retry: RetryConfig = RetryConfig()
+    cost: CostConfig = CostConfig()
 
     @field_validator("milestones")
     @classmethod

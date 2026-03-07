@@ -109,7 +109,7 @@ class TestPipelineResumeFlow:
         resp = client.post(f"/api/pipeline/{pid}/stop")
         assert resp.status_code == 200
         resp = client.get(f"/api/projects/{pid}")
-        assert resp.get_json()["status"] == "paused"
+        assert resp.get_json()["status"] == "stopped"
 
         # Resume
         resp = client.post(f"/api/pipeline/{pid}/resume")
@@ -541,11 +541,11 @@ class TestLockFileMechanism:
         )
         pid = resp.get_json()["id"]
 
-        # Create lock file manually
+        # Create lock file manually with current PID so it looks alive
         lock_path = os.path.join(sample_project_with_config, ".ralph", "pipeline.lock")
         os.makedirs(os.path.dirname(lock_path), exist_ok=True)
         with open(lock_path, "w") as f:
-            json.dump({"pid": 12345}, f)
+            json.dump({"pid": os.getpid()}, f)
 
         # Start should fail
         resp = client.post(f"/api/pipeline/{pid}/start", json={})
@@ -568,11 +568,11 @@ class TestLockFileMechanism:
         )
         pid = resp.get_json()["id"]
 
-        # Create lock file
+        # Create lock file with a dead PID (orphaned — will be cleaned up)
         lock_path = os.path.join(sample_project_with_config, ".ralph", "pipeline.lock")
         os.makedirs(os.path.dirname(lock_path), exist_ok=True)
         with open(lock_path, "w") as f:
-            json.dump({"pid": 12345}, f)
+            json.dump({"pid": 99999999}, f)
 
         # Mark as active so stop actually processes
         from api.pipeline import active_pipelines

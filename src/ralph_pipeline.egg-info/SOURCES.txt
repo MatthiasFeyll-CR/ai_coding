@@ -5,6 +5,7 @@ src/ralph_pipeline/__main__.py
 src/ralph_pipeline/cli.py
 src/ralph_pipeline/config.py
 src/ralph_pipeline/git_ops.py
+src/ralph_pipeline/lockfile.py
 src/ralph_pipeline/log.py
 src/ralph_pipeline/runner.py
 src/ralph_pipeline/state.py
@@ -77,6 +78,7 @@ tests/test_additional.py
 tests/test_ai_env.py
 tests/test_cli.py
 tests/test_config.py
+tests/test_cost_tracking.py
 tests/test_health.py
 tests/test_phase0.py
 tests/test_prompts.py

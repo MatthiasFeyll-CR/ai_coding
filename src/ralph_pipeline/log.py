@@ -27,6 +27,10 @@ class PipelineLogger:
         self._project_name = ""
         self._tokens_in = 0
         self._tokens_out = 0
+        self._cache_creation = 0
+        self._cache_read = 0
+        self._cost_usd = 0.0
+        self._session_cost_usd = 0.0
 
     def set_context(
         self,
@@ -44,10 +48,25 @@ class PipelineLogger:
         if project_name:
             self._project_name = project_name
 
-    def track_tokens(self, tokens_in: int, tokens_out: int) -> None:
-        """Accumulate token usage for display in status panel."""
+    def track_tokens(
+        self,
+        tokens_in: int,
+        tokens_out: int,
+        cache_creation: int = 0,
+        cache_read: int = 0,
+        cost_usd: float = 0.0,
+    ) -> None:
+        """Accumulate token usage and cost for display in status panel."""
         self._tokens_in += tokens_in
         self._tokens_out += tokens_out
+        self._cache_creation += cache_creation
+        self._cache_read += cache_read
+        self._cost_usd += cost_usd
+        self._session_cost_usd += cost_usd
+
+    def reset_session_cost(self) -> None:
+        """Reset per-session cost accumulator (call at phase boundaries)."""
+        self._session_cost_usd = 0.0
 
     def _format_tokens(self, count: int) -> str:
         """Format token count for display (e.g., 48000 → ~48K)."""
@@ -59,6 +78,13 @@ class PipelineLogger:
         from datetime import datetime
 
         return datetime.now().strftime("%H:%M:%S")
+
+    @staticmethod
+    def _format_cost(usd: float) -> str:
+        """Format USD cost for display."""
+        if usd < 0.01:
+            return f"${usd:.4f}"
+        return f"${usd:.2f}"
 
     def show_status_panel(self) -> None:
         """Render the top-level status panel."""
@@ -85,6 +111,17 @@ class PipelineLogger:
             content += (
                 f"\n  Tokens: {self._format_tokens(self._tokens_in)} in / "
                 f"{self._format_tokens(self._tokens_out)} out"
+            )
+            if self._cache_read > 0 or self._cache_creation > 0:
+                content += (
+                    f" (cached: {self._format_tokens(self._cache_read)} read"
+                    f", {self._format_tokens(self._cache_creation)} created)"
+                )
+
+        if self._cost_usd > 0:
+            content += (
+                f"\n  Cost: {self._format_cost(self._session_cost_usd)} (phase) / "
+                f"{self._format_cost(self._cost_usd)} (total)"
             )
 
         panel = Panel(
@@ -156,6 +193,16 @@ class PipelineLogger:
         if not all_complete:
             content += "  Resume: [cyan]ralph-pipeline run --config pipeline-config.json --resume[/cyan]\n"
         content += f"\n  Total time: {mins}m {secs:02d}s\n  Logs: .ralph/logs/\n"
+
+        # Cost summary
+        if state.cost.total_usd > 0:
+            content += f"  Total cost: [bold]{self._format_cost(state.cost.total_usd)}[/bold]\n"
+            if state.cost.by_milestone:
+                parts = [
+                    f"M{mid}: {self._format_cost(c)}"
+                    for mid, c in sorted(state.cost.by_milestone.items())
+                ]
+                content += f"  By milestone: {' | '.join(parts)}\n"
 
         panel = Panel(
             content,

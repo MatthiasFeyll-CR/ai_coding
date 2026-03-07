@@ -5,7 +5,6 @@ subprocess lifecycle, log streaming, and status updates.
 """
 
 import os
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
@@ -207,10 +206,10 @@ class TestPipelineRunnerStop:
 
 
 class TestPipelineRunnerRunPipeline:
-    """Test _run_pipeline() subprocess and lock management."""
+    """Test _run_pipeline() subprocess management."""
 
-    def test_creates_lock_file(self, app, sample_project_with_config):
-        """_run_pipeline should create a lock file before running."""
+    def test_spawns_subprocess(self, app, sample_project_with_config):
+        """_run_pipeline should spawn a subprocess."""
         from models import Project
         from services.pipeline_runner import PipelineRunner
 
@@ -229,7 +228,6 @@ class TestPipelineRunnerRunPipeline:
             db.session.commit()
 
             runner = PipelineRunner(project)
-            lock_path = Path(sample_project_with_config) / ".ralph" / "pipeline.lock"
 
             # Mock subprocess to avoid actually running
             with patch("services.pipeline_runner.subprocess.Popen") as mock_popen:
@@ -239,12 +237,9 @@ class TestPipelineRunnerRunPipeline:
                 mock_proc.wait.return_value = 0
                 mock_popen.return_value = mock_proc
 
-                # Patch WebSocket imports
-                with patch("services.pipeline_runner.emit_log", create=True):
-                    runner._run_pipeline()
+                runner._run_pipeline()
 
-            # Lock file should be removed after completion
-            assert not lock_path.exists()
+            mock_popen.assert_called_once()
 
     def test_builds_command_with_resume(self, app, sample_project_with_config):
         """_run_pipeline should add --resume flag when resume=True."""
@@ -377,8 +372,8 @@ class TestPipelineRunnerRunPipeline:
             db.session.refresh(project)
             assert project.status == "error"
 
-    def test_removes_lock_on_exception(self, app, sample_project_with_config):
-        """Lock file should be cleaned up even if an exception occurs."""
+    def test_handles_exception_gracefully(self, app, sample_project_with_config):
+        """Runner should set running=False even if an exception occurs."""
         from models import Project
         from services.pipeline_runner import PipelineRunner
 
@@ -397,19 +392,16 @@ class TestPipelineRunnerRunPipeline:
             db.session.commit()
 
             runner = PipelineRunner(project)
-            lock_path = Path(sample_project_with_config) / ".ralph" / "pipeline.lock"
 
             with patch("services.pipeline_runner.subprocess.Popen") as mock_popen:
                 mock_popen.side_effect = OSError("cannot start process")
 
-                # The try/finally ensures lock cleanup even when exception propagates
                 try:
                     runner._run_pipeline()
                 except OSError:
                     pass
 
-            # Lock file should have been removed by the finally block
-            assert not lock_path.exists()
+            assert runner.running is False
 
     def test_logs_output_to_database(self, app, sample_project_with_config):
         """Each line of subprocess output should be logged to the database."""

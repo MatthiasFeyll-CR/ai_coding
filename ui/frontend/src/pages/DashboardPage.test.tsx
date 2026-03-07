@@ -32,7 +32,13 @@ vi.mock('@/api/client', () => ({
   pipelineApi: {
     getLogs: vi.fn().mockResolvedValue({ data: [] }),
     getTokens: vi.fn().mockResolvedValue({
-      data: { total: { input_tokens: 0, output_tokens: 0, cost_usd: 0 }, by_milestone: {}, history: [] },
+      data: {
+        total: { input_tokens: 0, output_tokens: 0, cost_usd: 0, cache_creation_tokens: 0, cache_read_tokens: 0, invocations: 0 },
+        by_milestone: {},
+        by_phase: {},
+        by_model: {},
+        history: [],
+      },
     }),
     getMilestones: vi.fn().mockResolvedValue({ data: { milestones: [], max_bugfix_cycles: 3 } }),
     start: vi.fn(),

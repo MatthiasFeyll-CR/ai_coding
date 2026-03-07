@@ -1,18 +1,19 @@
 """Pipeline execution service."""
 
-import json
-import os
 import subprocess
 import threading
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timezone
 
 from database import db
 from models import ExecutionLog, Project
 
 
 class PipelineRunner:
-    """Manages pipeline execution as a subprocess."""
+    """Manages pipeline execution as a subprocess.
+
+    Lock file management is handled by the ``ralph-pipeline`` CLI itself.
+    This service only spawns the subprocess and streams its output.
+    """
 
     def __init__(self, project, milestone_id=None, resume=False):
         # Eagerly capture scalar values while the ORM object is still
@@ -46,20 +47,6 @@ class PipelineRunner:
     def _run_pipeline(self):
         """Run pipeline subprocess and stream output."""
         from app import app
-
-        # Create lock file
-        lock_path = Path(self.root_path) / ".ralph" / "pipeline.lock"
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-
-        lock_data = {
-            "pid": os.getpid(),
-            "started_at": datetime.utcnow().isoformat(),
-            "project_id": self.project_id,
-            "source": "ui",
-        }
-
-        with open(lock_path, "w") as f:
-            json.dump(lock_data, f)
 
         try:
             # Build command
@@ -110,7 +97,7 @@ class PipelineRunner:
                         {
                             "project_id": self.project_id,
                             "message": line.strip(),
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                         },
                     )
 
@@ -124,12 +111,8 @@ class PipelineRunner:
                         project.status = "success"
                     else:
                         project.status = "error"
-                    project.last_run_at = datetime.utcnow()
+                    project.last_run_at = datetime.now(timezone.utc)
                     db.session.commit()
 
         finally:
-            # Remove lock file
-            if lock_path.exists():
-                lock_path.unlink()
-
             self.running = False

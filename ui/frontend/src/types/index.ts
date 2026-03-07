@@ -4,7 +4,7 @@ export interface Project {
   root_path: string;
   project_path: string;
   config_path: string;
-  status: 'initialized' | 'ready' | 'running' | 'error' | 'success' | 'paused' | 'configuring';
+  status: 'initialized' | 'ready' | 'running' | 'error' | 'success' | 'paused' | 'configuring' | 'stopped';
   is_setup: boolean;
   last_run_at: string | null;
   created_at: string;
@@ -65,14 +65,38 @@ export interface TokenUsage {
   total: {
     input_tokens: number;
     output_tokens: number;
+    cache_creation_tokens: number;
+    cache_read_tokens: number;
     cost_usd: number;
+    invocations: number;
   };
   by_milestone: Record<
     number,
     {
       input_tokens: number;
       output_tokens: number;
+      cache_creation_tokens: number;
+      cache_read_tokens: number;
       cost_usd: number;
+      invocations: number;
+    }
+  >;
+  by_phase: Record<
+    string,
+    {
+      input_tokens: number;
+      output_tokens: number;
+      cost_usd: number;
+      invocations: number;
+    }
+  >;
+  by_model: Record<
+    string,
+    {
+      input_tokens: number;
+      output_tokens: number;
+      cost_usd: number;
+      invocations: number;
     }
   >;
   history: Array<{
@@ -83,7 +107,10 @@ export interface TokenUsage {
     model: string;
     input_tokens: number;
     output_tokens: number;
+    cache_creation_tokens: number;
+    cache_read_tokens: number;
     cost_usd: number;
+    session_id: string;
     created_at: string;
   }>;
 }

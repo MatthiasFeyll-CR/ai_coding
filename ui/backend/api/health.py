@@ -41,6 +41,9 @@ def check_requirements():
     # Node.js
     checks.append(_check_command("nodejs", "node --version"))
 
+    # Clear old results before saving new ones
+    RequirementCheck.query.delete()
+
     # Save results to database
     for check in checks:
         record = RequirementCheck(

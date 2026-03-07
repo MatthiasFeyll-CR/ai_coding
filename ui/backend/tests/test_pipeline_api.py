@@ -3,6 +3,7 @@
 Tests pipeline control, logs, tokens, and milestones endpoints.
 """
 
+import json
 import os
 
 
@@ -25,13 +26,14 @@ class TestStartPipeline:
         assert data["success"] is True
         mock_runner.start.assert_called_once()
 
-    def test_start_pipeline_with_lock(self, client, linked_project_with_config):
-        """If lock file exists, start should return 409."""
+    def test_start_pipeline_with_lock(self, client, linked_project_with_config, monkeypatch):
+        """If lock file exists with a live PID, start should return 409."""
         project_path = linked_project_with_config["root_path"]
         lock_path = os.path.join(project_path, ".ralph", "pipeline.lock")
         os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        # Use current PID so is_pid_alive returns True
         with open(lock_path, "w") as f:
-            f.write("locked")
+            json.dump({"pid": os.getpid()}, f)
 
         pid = linked_project_with_config["id"]
         resp = client.post(f"/api/pipeline/{pid}/start", json={})
@@ -70,9 +72,9 @@ class TestStopPipeline:
         assert resp.status_code == 200
         assert resp.get_json()["success"] is True
 
-        # Verify status changes to paused
+        # Verify status changes to stopped
         project = client.get(f"/api/projects/{pid}").get_json()
-        assert project["status"] == "paused"
+        assert project["status"] == "stopped"
 
     def test_stop_removes_lock(self, client, linked_project):
         project_path = linked_project["root_path"]

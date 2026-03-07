@@ -54,14 +54,19 @@ function MilestoneNode({ data }: NodeProps<MilestoneNodeData>) {
         data.onSelect();
       }}
       className={clsx(
-        'px-5 py-3 rounded-lg border-2 bg-bg-tertiary cursor-pointer transition-all min-w-[160px]',
+        'px-5 py-3 rounded-lg border-2 bg-bg-tertiary cursor-pointer transition-all duration-200 min-w-[160px]',
         borderColor[data.status],
-        data.selected ? 'opacity-100 shadow-lg ring-1 ring-accent-cyan/30' : 'opacity-60 hover:opacity-90'
+        data.selected
+          ? 'opacity-100 shadow-[0_0_16px_rgba(6,182,212,0.25)] ring-2 ring-accent-cyan scale-[1.03] bg-accent-cyan/[0.08]'
+          : 'opacity-60 hover:opacity-90 hover:scale-[1.01]'
       )}
     >
       <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0" />
       <div className="flex items-center justify-center gap-3">
-        <span className="font-medium text-sm">{data.label}</span>
+        {data.selected && (
+          <div className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse" />
+        )}
+        <span className={clsx('font-medium text-sm', data.selected && 'text-accent-cyan')}>{data.label}</span>
         <MilestoneStatusIcon status={data.status} />
       </div>
       <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0" />

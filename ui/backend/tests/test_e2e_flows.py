@@ -130,7 +130,8 @@ class TestSetupToExecutionFlow:
         # Get milestones
         resp = client.get(f"/api/pipeline/{pid}/milestones")
         assert resp.status_code == 200
-        milestones = resp.get_json()
+        data = resp.get_json()
+        milestones = data["milestones"]
         assert len(milestones) == 2
 
         # Get state
@@ -150,9 +151,9 @@ class TestSetupToExecutionFlow:
         resp = client.post(f"/api/pipeline/{pid}/stop")
         assert resp.status_code == 200
 
-        # Status is paused
+        # Status is stopped
         resp = client.get(f"/api/projects/{pid}")
-        assert resp.get_json()["status"] == "paused"
+        assert resp.get_json()["status"] == "stopped"
 
 
 class TestSnapshotRestoreFlow:

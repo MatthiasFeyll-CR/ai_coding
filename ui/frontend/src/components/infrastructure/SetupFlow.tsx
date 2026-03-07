@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface SetupFlowProps {
   project: Project;
+  onSetupComplete?: () => void;
 }
 
 interface ProgressEntry {
@@ -30,7 +31,7 @@ interface ProgressEntry {
   type?: string;
 }
 
-export function SetupFlow({ project }: SetupFlowProps) {
+export function SetupFlow({ project, onSetupComplete }: SetupFlowProps) {
   const [configuring, setConfiguring] = useState(project.status === 'configuring');
   const [progress, setProgress] = useState<ProgressEntry[]>([]);
   const [conversationLog, setConversationLog] = useState<ProgressEntry[]>([]);
@@ -47,11 +48,15 @@ export function SetupFlow({ project }: SetupFlowProps) {
     try {
       const res = await projectsApi.get(project.id);
       setActiveProject(res.data);
+      // If setup is now complete, notify parent to switch tabs
+      if (res.data.is_setup && onSetupComplete) {
+        onSetupComplete();
+      }
     } catch {
       // If individual fetch fails, fall back to list refresh
       queryClient.invalidateQueries({ queryKey: ['projects'] });
     }
-  }, [project.id, setActiveProject, queryClient]);
+  }, [project.id, setActiveProject, queryClient, onSetupComplete]);
 
   // Fetch docs pre-check for this project
   const { data: preCheck } = useQuery({

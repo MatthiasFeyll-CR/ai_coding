@@ -131,7 +131,10 @@ class TokenUsage(db.Model):
     model = db.Column(db.String(100), nullable=False)
     input_tokens = db.Column(db.Integer, default=0)
     output_tokens = db.Column(db.Integer, default=0)
+    cache_creation_tokens = db.Column(db.Integer, default=0)
+    cache_read_tokens = db.Column(db.Integer, default=0)
     cost_usd = db.Column(db.Float, default=0.0)
+    session_id = db.Column(db.String(255), default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (db.Index("idx_tokens_project", "project_id", "milestone_id"),)
@@ -145,7 +148,10 @@ class TokenUsage(db.Model):
             "model": self.model,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
+            "cache_creation_tokens": self.cache_creation_tokens or 0,
+            "cache_read_tokens": self.cache_read_tokens or 0,
             "cost_usd": self.cost_usd,
+            "session_id": self.session_id or "",
             "created_at": self.created_at.isoformat(),
         }
 

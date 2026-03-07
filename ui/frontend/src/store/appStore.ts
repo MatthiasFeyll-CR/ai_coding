@@ -1,7 +1,7 @@
 import type { Project } from '@/types';
 import { create } from 'zustand';
 
-type ActiveTab = 'state' | 'git' | 'costs' | 'tests' | 'infrastructure';
+type ActiveTab = 'setup' | 'state' | 'git' | 'costs' | 'tests';
 
 interface AppState {
   // UI State
