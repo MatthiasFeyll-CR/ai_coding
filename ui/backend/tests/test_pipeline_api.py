@@ -180,43 +180,74 @@ class TestGetTokens:
         assert data["total"]["cost_usd"] == 0.0
 
     def test_tokens_aggregation(self, client, linked_project, db_session):
-        from models import TokenUsage
-
+        """Cost data is read from .ralph/state.json, not the DB."""
         pid = linked_project["id"]
-        db_session.add(
-            TokenUsage(
-                project_id=pid,
-                milestone_id=1,
-                phase="prd",
-                model="claude-opus-4",
-                input_tokens=1000,
-                output_tokens=500,
-                cost_usd=0.05,
-            )
-        )
-        db_session.add(
-            TokenUsage(
-                project_id=pid,
-                milestone_id=1,
-                phase="qa",
-                model="claude-opus-4",
-                input_tokens=2000,
-                output_tokens=1000,
-                cost_usd=0.10,
-            )
-        )
-        db_session.add(
-            TokenUsage(
-                project_id=pid,
-                milestone_id=2,
-                phase="prd",
-                model="claude-opus-4",
-                input_tokens=500,
-                output_tokens=200,
-                cost_usd=0.02,
-            )
-        )
-        db_session.commit()
+        root = linked_project["root_path"]
+
+        # Write cost data into state.json
+        ralph_dir = os.path.join(root, ".ralph")
+        os.makedirs(ralph_dir, exist_ok=True)
+        logs_dir = os.path.join(ralph_dir, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+
+        state = {
+            "cost": {
+                "sessions": [
+                    {
+                        "session_id": "sess-1",
+                        "phase": "prd",
+                        "milestone": 1,
+                        "model": "claude-opus-4",
+                        "input_tokens": 1000,
+                        "output_tokens": 500,
+                        "cache_creation_tokens": 0,
+                        "cache_read_tokens": 200,
+                        "cost_usd": 0.05,
+                        "invocations": 1,
+                    },
+                    {
+                        "session_id": "sess-2",
+                        "phase": "qa",
+                        "milestone": 1,
+                        "model": "claude-opus-4",
+                        "input_tokens": 2000,
+                        "output_tokens": 1000,
+                        "cache_creation_tokens": 0,
+                        "cache_read_tokens": 0,
+                        "cost_usd": 0.10,
+                        "invocations": 1,
+                    },
+                    {
+                        "session_id": "sess-3",
+                        "phase": "prd",
+                        "milestone": 2,
+                        "model": "claude-opus-4",
+                        "input_tokens": 500,
+                        "output_tokens": 200,
+                        "cache_creation_tokens": 0,
+                        "cache_read_tokens": 0,
+                        "cost_usd": 0.02,
+                        "invocations": 1,
+                    },
+                ]
+            }
+        }
+        with open(os.path.join(ralph_dir, "state.json"), "w") as f:
+            json.dump(state, f)
+
+        # Write matching pipeline.jsonl for timestamps
+        with open(os.path.join(logs_dir, "pipeline.jsonl"), "w") as f:
+            for s in state["cost"]["sessions"]:
+                f.write(
+                    json.dumps(
+                        {
+                            "event": "claude_invocation",
+                            "session_id": s["session_id"],
+                            "ts": "2026-03-07T14:00:00Z",
+                        }
+                    )
+                    + "\n"
+                )
 
         resp = client.get(f"/api/pipeline/{pid}/tokens")
         data = resp.get_json()
@@ -225,8 +256,12 @@ class TestGetTokens:
         assert data["total"]["output_tokens"] == 1700
         assert abs(data["total"]["cost_usd"] - 0.17) < 0.001
 
-        assert data["by_milestone"][str(1)]["input_tokens"] == 3000
-        assert data["by_milestone"][str(2)]["input_tokens"] == 500
+        assert data["by_milestone"]["1"]["input_tokens"] == 3000
+        assert data["by_milestone"]["2"]["input_tokens"] == 500
+
+        # History entries have timestamps from pipeline.jsonl
+        assert len(data["history"]) == 3
+        assert data["history"][0]["created_at"] == "2026-03-07T14:00:00Z"
 
 
 class TestGetMilestones:
@@ -246,7 +281,9 @@ class TestGetMilestones:
         assert resp.status_code == 200
         data = resp.get_json()
         milestones = data["milestones"]
-        assert len(milestones) == 2
+        # 3 milestones: phase 0 (Build Infrastructure) + milestones 1 & 2
+        assert len(milestones) == 3
         ids = [m["id"] for m in milestones]
+        assert 0 in ids  # phase 0
         assert 1 in ids
         assert 2 in ids

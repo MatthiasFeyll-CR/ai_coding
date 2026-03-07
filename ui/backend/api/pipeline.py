@@ -5,7 +5,7 @@ from pathlib import Path
 
 from database import db
 from flask import Blueprint, jsonify, request
-from models import ExecutionLog, Project, TokenUsage
+from models import ExecutionLog, Project
 from services.lockfile import is_pipeline_running, kill_pipeline, release_lock
 from services.pipeline_runner import PipelineRunner
 
@@ -149,14 +149,50 @@ def get_logs(project_id):
 
 @bp.route("/<int:project_id>/tokens", methods=["GET"])
 def get_tokens(project_id):
-    """Get token usage with aggregations by milestone, phase, and model."""
-    tokens = TokenUsage.query.filter_by(project_id=project_id).all()
+    """Get token usage with aggregations by milestone, phase, and model.
 
-    # Aggregation accumulators
-    by_milestone: dict = {}
-    by_phase: dict = {}
-    by_model: dict = {}
-    total = {
+    Reads cost data from .ralph/state.json (source of truth written by
+    the pipeline CLI) and enriches history entries with timestamps from
+    .ralph/logs/pipeline.jsonl.
+    """
+    project = Project.query.get_or_404(project_id)
+    state_path = Path(project.root_path) / ".ralph" / "state.json"
+    log_path = Path(project.root_path) / ".ralph" / "logs" / "pipeline.jsonl"
+
+    # Load state.json cost block
+    sessions: list[dict] = []
+    if state_path.exists():
+        try:
+            with open(state_path, "r") as f:
+                state = json.load(f)
+            sessions = state.get("cost", {}).get("sessions", [])
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Build a session_id → timestamp lookup from pipeline.jsonl
+    ts_lookup: dict[str, str] = {}
+    if log_path.exists():
+        try:
+            with open(log_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if (
+                            entry.get("event") == "claude_invocation"
+                            and "session_id" in entry
+                            and "ts" in entry
+                        ):
+                            ts_lookup[entry["session_id"]] = entry["ts"]
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+        except OSError:
+            pass
+
+    # Aggregate from sessions
+    _zero_bucket = lambda: {
         "input_tokens": 0,
         "output_tokens": 0,
         "cache_creation_tokens": 0,
@@ -164,64 +200,78 @@ def get_tokens(project_id):
         "cost_usd": 0.0,
         "invocations": 0,
     }
+    total = _zero_bucket()
+    by_milestone: dict[str, dict] = {}
+    by_phase: dict[str, dict] = {}
+    by_model: dict[str, dict] = {}
+    history: list[dict] = []
 
-    for token in tokens:
-        total["input_tokens"] += token.input_tokens
-        total["output_tokens"] += token.output_tokens
-        total["cache_creation_tokens"] += token.cache_creation_tokens or 0
-        total["cache_read_tokens"] += token.cache_read_tokens or 0
-        total["cost_usd"] += token.cost_usd
-        total["invocations"] += 1
+    for idx, s in enumerate(sessions):
+        in_tok = s.get("input_tokens", 0)
+        out_tok = s.get("output_tokens", 0)
+        cache_create = s.get("cache_creation_tokens", 0)
+        cache_read = s.get("cache_read_tokens", 0)
+        cost = s.get("cost_usd", 0.0)
+        invocations = s.get("invocations", 1)
+        phase_key = s.get("phase", "unknown")
+        model_key = s.get("model", "unknown")
+        milestone_key = str(s.get("milestone", ""))
+        session_id = s.get("session_id", "")
+
+        # Total
+        total["input_tokens"] += in_tok
+        total["output_tokens"] += out_tok
+        total["cache_creation_tokens"] += cache_create
+        total["cache_read_tokens"] += cache_read
+        total["cost_usd"] += cost
+        total["invocations"] += invocations
 
         # By milestone
-        if token.milestone_id:
-            if token.milestone_id not in by_milestone:
-                by_milestone[token.milestone_id] = {
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cache_creation_tokens": 0,
-                    "cache_read_tokens": 0,
-                    "cost_usd": 0.0,
-                    "invocations": 0,
-                }
-            by_milestone[token.milestone_id]["input_tokens"] += token.input_tokens
-            by_milestone[token.milestone_id]["output_tokens"] += token.output_tokens
-            by_milestone[token.milestone_id]["cache_creation_tokens"] += (
-                token.cache_creation_tokens or 0
-            )
-            by_milestone[token.milestone_id]["cache_read_tokens"] += (
-                token.cache_read_tokens or 0
-            )
-            by_milestone[token.milestone_id]["cost_usd"] += token.cost_usd
-            by_milestone[token.milestone_id]["invocations"] += 1
+        if milestone_key:
+            bm = by_milestone.setdefault(milestone_key, _zero_bucket())
+            bm["input_tokens"] += in_tok
+            bm["output_tokens"] += out_tok
+            bm["cache_creation_tokens"] += cache_create
+            bm["cache_read_tokens"] += cache_read
+            bm["cost_usd"] += cost
+            bm["invocations"] += invocations
 
         # By phase
-        phase_key = token.phase or "unknown"
-        if phase_key not in by_phase:
-            by_phase[phase_key] = {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "cost_usd": 0.0,
-                "invocations": 0,
-            }
-        by_phase[phase_key]["input_tokens"] += token.input_tokens
-        by_phase[phase_key]["output_tokens"] += token.output_tokens
-        by_phase[phase_key]["cost_usd"] += token.cost_usd
-        by_phase[phase_key]["invocations"] += 1
+        bp_ = by_phase.setdefault(phase_key, _zero_bucket())
+        bp_["input_tokens"] += in_tok
+        bp_["output_tokens"] += out_tok
+        bp_["cache_creation_tokens"] += cache_create
+        bp_["cache_read_tokens"] += cache_read
+        bp_["cost_usd"] += cost
+        bp_["invocations"] += invocations
 
         # By model
-        model_key = token.model or "unknown"
-        if model_key not in by_model:
-            by_model[model_key] = {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "cost_usd": 0.0,
-                "invocations": 0,
+        bmod = by_model.setdefault(model_key, _zero_bucket())
+        bmod["input_tokens"] += in_tok
+        bmod["output_tokens"] += out_tok
+        bmod["cache_creation_tokens"] += cache_create
+        bmod["cache_read_tokens"] += cache_read
+        bmod["cost_usd"] += cost
+        bmod["invocations"] += invocations
+
+        # History entry (matches frontend TokenUsage.history shape)
+        created_at = ts_lookup.get(session_id, "")
+        history.append(
+            {
+                "id": idx,
+                "project_id": project_id,
+                "milestone_id": s.get("milestone"),
+                "phase": phase_key,
+                "model": model_key,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+                "cache_creation_tokens": cache_create,
+                "cache_read_tokens": cache_read,
+                "cost_usd": cost,
+                "session_id": session_id,
+                "created_at": created_at,
             }
-        by_model[model_key]["input_tokens"] += token.input_tokens
-        by_model[model_key]["output_tokens"] += token.output_tokens
-        by_model[model_key]["cost_usd"] += token.cost_usd
-        by_model[model_key]["invocations"] += 1
+        )
 
     return jsonify(
         {
@@ -229,7 +279,7 @@ def get_tokens(project_id):
             "by_milestone": by_milestone,
             "by_phase": by_phase,
             "by_model": by_model,
-            "history": [t.to_dict() for t in tokens],
+            "history": history,
         }
     )
 

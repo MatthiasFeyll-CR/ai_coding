@@ -6,11 +6,10 @@ from ralph_pipeline.cli import _build_parser
 
 
 class TestCLIParser:
-    def test_run_required_config(self):
+    def test_run_basic(self):
         parser = _build_parser()
-        args = parser.parse_args(["run", "--config", "test.json"])
+        args = parser.parse_args(["run"])
         assert args.command == "run"
-        assert args.config == "test.json"
         assert args.resume is False
         assert args.dry_run is False
 
@@ -19,8 +18,6 @@ class TestCLIParser:
         args = parser.parse_args(
             [
                 "run",
-                "--config",
-                "test.json",
                 "--resume",
                 "--milestone",
                 "3",
@@ -38,9 +35,8 @@ class TestCLIParser:
 
     def test_validate_infra(self):
         parser = _build_parser()
-        args = parser.parse_args(["validate-infra", "--config", "test.json"])
+        args = parser.parse_args(["validate-infra"])
         assert args.command == "validate-infra"
-        assert args.config == "test.json"
 
     def test_no_command(self):
         parser = _build_parser()

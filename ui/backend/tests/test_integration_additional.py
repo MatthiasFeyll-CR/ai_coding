@@ -244,10 +244,9 @@ class TestPipelineErrorHandling:
         assert resp.get_json() == []
 
     def test_tokens_nonexistent_project(self, client):
-        """GET /pipeline/999/tokens should return zero totals."""
+        """GET /pipeline/999/tokens should return 404."""
         resp = client.get("/api/pipeline/999/tokens")
-        assert resp.status_code == 200
-        assert resp.get_json()["total"]["input_tokens"] == 0
+        assert resp.status_code == 404
 
     def test_milestones_nonexistent_project(self, client):
         """GET /pipeline/999/milestones should return 404."""
@@ -362,49 +361,59 @@ class TestTokenAggregationEdgeCases:
 
     def test_tokens_multiple_milestones(self, client, sample_project_dir, db_session):
         """Token aggregation should group by milestone correctly."""
-        from models import TokenUsage
-
         resp = client.post(
             "/api/projects",
             json={"project_path": sample_project_dir},
         )
         pid = resp.get_json()["id"]
 
-        # Add tokens for multiple milestones
-        db_session.add(
-            TokenUsage(
-                project_id=pid,
-                milestone_id=1,
-                phase="prd",
-                model="claude-opus-4",
-                input_tokens=1000,
-                output_tokens=500,
-                cost_usd=0.05,
-            )
-        )
-        db_session.add(
-            TokenUsage(
-                project_id=pid,
-                milestone_id=1,
-                phase="ralph",
-                model="claude-opus-4",
-                input_tokens=2000,
-                output_tokens=800,
-                cost_usd=0.10,
-            )
-        )
-        db_session.add(
-            TokenUsage(
-                project_id=pid,
-                milestone_id=2,
-                phase="prd",
-                model="claude-3-5-haiku",
-                input_tokens=500,
-                output_tokens=200,
-                cost_usd=0.01,
-            )
-        )
-        db_session.commit()
+        # Write cost sessions to state.json
+        ralph_dir = os.path.join(sample_project_dir, ".ralph")
+        os.makedirs(ralph_dir, exist_ok=True)
+        state = {
+            "cost": {
+                "sessions": [
+                    {
+                        "session_id": "s1",
+                        "phase": "prd",
+                        "milestone": 1,
+                        "model": "claude-opus-4",
+                        "input_tokens": 1000,
+                        "output_tokens": 500,
+                        "cache_creation_tokens": 0,
+                        "cache_read_tokens": 0,
+                        "cost_usd": 0.05,
+                        "invocations": 1,
+                    },
+                    {
+                        "session_id": "s2",
+                        "phase": "ralph",
+                        "milestone": 1,
+                        "model": "claude-opus-4",
+                        "input_tokens": 2000,
+                        "output_tokens": 800,
+                        "cache_creation_tokens": 0,
+                        "cache_read_tokens": 0,
+                        "cost_usd": 0.10,
+                        "invocations": 1,
+                    },
+                    {
+                        "session_id": "s3",
+                        "phase": "prd",
+                        "milestone": 2,
+                        "model": "claude-3-5-haiku",
+                        "input_tokens": 500,
+                        "output_tokens": 200,
+                        "cache_creation_tokens": 0,
+                        "cache_read_tokens": 0,
+                        "cost_usd": 0.01,
+                        "invocations": 1,
+                    },
+                ]
+            }
+        }
+        with open(os.path.join(ralph_dir, "state.json"), "w") as f:
+            json.dump(state, f)
 
         resp = client.get(f"/api/pipeline/{pid}/tokens")
         data = resp.get_json()
@@ -422,26 +431,35 @@ class TestTokenAggregationEdgeCases:
         assert len(data["history"]) == 3
 
     def test_tokens_without_milestone(self, client, sample_project_dir, db_session):
-        """Tokens without milestone_id should still be in total."""
-        from models import TokenUsage
-
+        """Tokens without milestone should still be in total."""
         resp = client.post(
             "/api/projects",
             json={"project_path": sample_project_dir},
         )
         pid = resp.get_json()["id"]
 
-        db_session.add(
-            TokenUsage(
-                project_id=pid,
-                milestone_id=None,
-                model="claude-opus-4",
-                input_tokens=100,
-                output_tokens=50,
-                cost_usd=0.005,
-            )
-        )
-        db_session.commit()
+        # Write cost session with no milestone
+        ralph_dir = os.path.join(sample_project_dir, ".ralph")
+        os.makedirs(ralph_dir, exist_ok=True)
+        state = {
+            "cost": {
+                "sessions": [
+                    {
+                        "session_id": "s1",
+                        "phase": "unknown",
+                        "model": "claude-opus-4",
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "cache_creation_tokens": 0,
+                        "cache_read_tokens": 0,
+                        "cost_usd": 0.005,
+                        "invocations": 1,
+                    }
+                ]
+            }
+        }
+        with open(os.path.join(ralph_dir, "state.json"), "w") as f:
+            json.dump(state, f)
 
         resp = client.get(f"/api/pipeline/{pid}/tokens")
         data = resp.get_json()

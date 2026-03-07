@@ -397,7 +397,7 @@ class TestPhaseDryRun:
 
 
 class TestValidateInfra:
-    def test_constructs_from_config(self, tmp_path: Path):
+    def test_constructs_from_config(self, tmp_path: Path, monkeypatch):
         """Test that validate_infra constructs correct objects from config."""
         config_data = {
             "project": {"name": "InfraTest"},
@@ -405,6 +405,9 @@ class TestValidateInfra:
         }
         config_file = tmp_path / "pipeline-config.json"
         config_file.write_text(json.dumps(config_data))
+
+        # validate_infra now reads pipeline-config.json from CWD
+        monkeypatch.chdir(tmp_path)
 
         from ralph_pipeline.cli import validate_infra
 
@@ -419,7 +422,7 @@ class TestValidateInfra:
 
             import argparse
 
-            args = argparse.Namespace(config=str(config_file))
+            args = argparse.Namespace()
 
             # This will attempt to run validation steps
             try:

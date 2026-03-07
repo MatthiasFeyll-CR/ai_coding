@@ -8,6 +8,7 @@ import signal
 import sys
 from pathlib import Path
 
+from ralph_pipeline import __version__
 from ralph_pipeline.ai.claude import ClaudeRunner
 from ralph_pipeline.ai.env import AIEnvError, build_claude_env, load_and_validate_ai_env
 from ralph_pipeline.config import PipelineConfig
@@ -26,19 +27,24 @@ from ralph_pipeline.state import PipelineState
 from ralph_pipeline.subprocess_utils import set_dry_run
 from ralph_pipeline.usage import EventLogger
 
+CONFIG_FILENAME = "pipeline-config.json"
+
+
+CONFIG_FILENAME = "pipeline-config.json"
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ralph-pipeline",
         description="AI Coding Pipeline Orchestrator",
     )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     # run subcommand
     run_parser = subparsers.add_parser("run", help="Execute the pipeline")
-    run_parser.add_argument(
-        "--config", required=True, help="Path to pipeline-config.json"
-    )
     run_parser.add_argument(
         "--resume", action="store_true", help="Resume from saved state"
     )
@@ -53,11 +59,8 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("install-skills", help="Copy skills to ~/.claude/skills/")
 
     # validate-infra subcommand
-    validate_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "validate-infra", help="Test infrastructure lifecycle"
-    )
-    validate_parser.add_argument(
-        "--config", required=True, help="Path to pipeline-config.json"
     )
 
     return parser
@@ -98,7 +101,7 @@ def _setup_signal_handlers(
 
 def run_pipeline(args: argparse.Namespace) -> None:
     """Main pipeline execution."""
-    config_path = Path(args.config).resolve()
+    config_path = Path(CONFIG_FILENAME).resolve()
     if not config_path.exists():
         print(f"Error: Config file not found: {config_path}", file=sys.stderr)
         sys.exit(1)
@@ -338,7 +341,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         if not success:
             plogger.error(
                 f"Milestone {milestone_config.id} ({milestone_config.slug}) FAILED. "
-                f"Fix manually and resume with: ralph-pipeline run --config {args.config} --resume"
+                f"Fix manually and resume with: ralph-pipeline run --resume"
             )
             plogger.show_summary(state, config)
             sys.exit(1)
@@ -424,7 +427,7 @@ def install_skills() -> None:
 
 def validate_infra(args: argparse.Namespace) -> None:
     """Run infrastructure validation — full lifecycle test."""
-    config_path = Path(args.config).resolve()
+    config_path = Path(CONFIG_FILENAME).resolve()
     if not config_path.exists():
         print(f"Error: Config file not found: {config_path}", file=sys.stderr)
         sys.exit(1)
@@ -502,13 +505,5 @@ def main() -> None:
         validate_infra(args)
     else:
         parser.print_help()
-        sys.exit(0)
-        sys.exit(0)
-        sys.exit(0)
-        sys.exit(0)
-        sys.exit(0)
-        sys.exit(0)
-        sys.exit(0)
-        sys.exit(0)
         sys.exit(0)
         sys.exit(0)

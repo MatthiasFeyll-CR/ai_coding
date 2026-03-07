@@ -132,7 +132,8 @@ class TestSetupToExecutionFlow:
         assert resp.status_code == 200
         data = resp.get_json()
         milestones = data["milestones"]
-        assert len(milestones) == 2
+        # 3 milestones: phase 0 (Build Infrastructure) + milestones 1 & 2
+        assert len(milestones) == 3
 
         # Get state
         resp = client.get(f"/api/projects/{pid}/state")
@@ -254,7 +255,7 @@ class TestMultiProjectFlow:
     """
 
     def test_data_isolation(self, client, db_session):
-        from models import ExecutionLog, TokenUsage
+        from models import ExecutionLog
 
         dirs = []
         pids = []
@@ -294,17 +295,29 @@ class TestMultiProjectFlow:
         resp = client.get(f"/api/pipeline/{pids[1]}/logs")
         assert len(resp.get_json()) == 1
 
-        # Add tokens to project 1
-        db_session.add(
-            TokenUsage(
-                project_id=pids[1],
-                model="claude-opus-4",
-                input_tokens=1000,
-                output_tokens=500,
-                cost_usd=0.05,
-            )
-        )
-        db_session.commit()
+        # Add tokens via state.json to project 1
+        ralph_dir = os.path.join(dirs[1], ".ralph")
+        os.makedirs(ralph_dir, exist_ok=True)
+        state_data = {
+            "cost": {
+                "sessions": [
+                    {
+                        "session_id": "test-sess",
+                        "phase": "prd",
+                        "milestone": 1,
+                        "model": "claude-opus-4",
+                        "input_tokens": 1000,
+                        "output_tokens": 500,
+                        "cache_creation_tokens": 0,
+                        "cache_read_tokens": 0,
+                        "cost_usd": 0.05,
+                        "invocations": 1,
+                    }
+                ]
+            }
+        }
+        with open(os.path.join(ralph_dir, "state.json"), "w") as f:
+            json.dump(state_data, f)
 
         # Project 0 has no tokens
         resp = client.get(f"/api/pipeline/{pids[0]}/tokens")

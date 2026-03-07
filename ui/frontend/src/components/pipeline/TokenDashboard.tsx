@@ -33,6 +33,9 @@ interface TokenDashboardProps {
 const CHART_COLORS = ['#06b6d4', '#a855f7', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6'];
 
 const PHASE_COLORS: Record<string, string> = {
+  phase0_scaffolding: '#14b8a6',
+  phase0_test_infra: '#0ea5e9',
+  phase0_lifecycle: '#8b5cf6',
   prd_generation: '#3b82f6',
   ralph: '#a855f7',
   qa_review: '#10b981',
@@ -60,6 +63,9 @@ function formatTokens(count: number): string {
 
 function formatPhaseName(phase: string): string {
   const names: Record<string, string> = {
+    phase0_scaffolding: 'Scaffolding',
+    phase0_test_infra: 'Test Infra',
+    phase0_lifecycle: 'Lifecycle',
     prd_generation: 'PRD Gen',
     ralph: 'Ralph',
     qa_review: 'QA Review',
@@ -69,7 +75,7 @@ function formatPhaseName(phase: string): string {
     gate_fix: 'Gate Fix',
     unknown: 'Other',
   };
-  return names[phase] || phase;
+  return names[phase] || phase.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function shortenModel(model: string): string {
@@ -229,10 +235,13 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
     }))
     .filter((d) => d.value > 0);
 
-  // History timeline (most recent first)
-  const sortedHistory = [...history].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
+  // History timeline (most recent first; fall back to array order when timestamps missing)
+  const sortedHistory = [...history].sort((a, b) => {
+    if (a.created_at && b.created_at) {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    return (b.id ?? 0) - (a.id ?? 0);
+  });
 
   return (
     <div className="space-y-6">
@@ -524,7 +533,9 @@ function HistoryTable({ history }: { history: TokenUsage['history'] }) {
               className="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors"
             >
               <td className="py-2 pr-3 text-text-muted whitespace-nowrap">
-                {new Date(row.created_at).toLocaleTimeString()}
+                {row.created_at
+                  ? new Date(row.created_at).toLocaleTimeString()
+                  : '—'}
               </td>
               <td className="py-2 px-2">
                 <div className="flex items-center gap-1.5">
