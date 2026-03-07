@@ -448,7 +448,6 @@ After config is generated and verified:
 7. **Gate checks must be realistic.** Don't add gate checks for tools that aren't in the project's tech stack.
 8. **Validate before saving.** Always run the verification checklist (Section 5).
 9. **If uncertain about services, ask the user.** Never guess whether a service needs a real backend vs. an in-memory mock. The user knows their project.
-10. **Confirm with user.** Show the generated config summary and get approval before finalizing.
 
 ---
 

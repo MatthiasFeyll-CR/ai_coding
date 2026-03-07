@@ -6,7 +6,6 @@ Tests pipeline control, logs, tokens, and milestones endpoints.
 import os
 
 
-
 class TestStartPipeline:
     """POST /api/pipeline/<id>/start"""
 
