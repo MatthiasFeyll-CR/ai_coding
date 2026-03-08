@@ -61,10 +61,9 @@ class TestMilestoneRunner:
     @patch("ralph_pipeline.runner.run_prd_generation")
     @patch("ralph_pipeline.runner.run_ralph_execution")
     @patch("ralph_pipeline.runner.run_qa_review", return_value=True)
-    @patch("ralph_pipeline.runner.run_merge_verify")
     @patch("ralph_pipeline.runner.run_reconciliation")
     def test_full_execution_success(
-        self, mock_recon, mock_merge, mock_qa, mock_ralph, mock_prd, tmp_path: Path
+        self, mock_recon, mock_qa, mock_ralph, mock_prd, tmp_path: Path
     ):
         runner = self._make_runner(tmp_path=tmp_path)
         success = runner.execute()
@@ -73,7 +72,6 @@ class TestMilestoneRunner:
         mock_prd.assert_called_once()
         mock_ralph.assert_called_once()
         mock_qa.assert_called_once()
-        mock_merge.assert_called_once()
         mock_recon.assert_called_once()
 
     @patch(

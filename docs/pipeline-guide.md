@@ -36,12 +36,12 @@ Everything starts with `pipeline-config.json` at the project root:
 
 The config defines milestones in execution order, with optional dependencies between them. Each milestone specifies a slug (used for branch naming) and number of user stories.
 
-### The 5-Phase Lifecycle
+### The 4-Phase Lifecycle
 
 Every milestone passes through these phases sequentially, managed by a finite state machine:
 
 ```
-pending → prd_generation → ralph_execution → qa_review → merge_verify → reconciliation → complete
+pending → prd_generation → ralph_execution → qa_review → reconciliation → complete
                                 ↑                |
                                 └── qa_needs_fix ┘
 ```
@@ -55,11 +55,8 @@ Creates a feature branch (`ralph/mN-slug`), then runs the Ralph agent loop — a
 **Phase 3 — QA Review**
 Runs the full test suite, analyzes test coverage against the PRD's test matrix, and invokes a QA reviewer agent. The reviewer issues a PASS or FAIL verdict. On FAIL, the pipeline loops back to Phase 2 for a bugfix cycle (up to `qa.max_bugfix_cycles` times). On PASS, the milestone is archived and proceeds.
 
-**Phase 4 — Merge & Verify**
-Merges the feature branch into the base branch (`--no-ff`), runs post-merge tests with regression analysis (distinguishing regressions from current-milestone failures), executes integration tests, and runs all configured gate checks (lint, typecheck, etc.). Failed gate checks trigger AI-assisted fix cycles. On success, the milestone is tagged `mN-complete` and the feature branch is deleted.
-
-**Phase 5 — Reconciliation**
-Invokes the Spec Reconciler agent to update project documentation (specs, changelogs) to reflect what was actually built vs. what was planned. This phase is non-fatal — reconciliation failures are logged as warnings but don't block the pipeline.
+**Phase 4 — Merge + Reconciliation**
+Merges the feature branch into the base branch (`--no-ff`), registers test ownership for regression tracking, tags `mN-complete`, and deletes the feature branch. Then invokes the Spec Reconciler agent to update project documentation to reflect what was actually built vs. what was planned. Since the pipeline uses a single linear coding agent, the merged code is identical to what QA validated — no post-merge verification is needed. Reconciliation failures are non-fatal.
 
 ### Directory Structure
 
@@ -100,11 +97,9 @@ Services are verified via TCP connectivity checks with configurable timeouts bef
 
 ### Regression Analysis
 
-After merging a milestone, the pipeline distinguishes between:
-- **REGRESSION:** A test owned by a previously-completed milestone now fails → high priority, blocks pipeline
+After merging a milestone, test ownership is recorded in `state.json` via `test_milestone_map`, built by scanning git history for when test files were first committed. This allows the QA phase of future milestones to classify failures as:
+- **REGRESSION:** A test owned by a previously-completed milestone now fails → high priority
 - **CURRENT:** A test introduced by the current milestone fails → normal fix cycle
-
-Test ownership is tracked in `state.json` via `test_milestone_map`, built by scanning git history for when test files were first committed.
 
 ## CLI Reference
 
@@ -142,7 +137,7 @@ ralph-pipeline validate-infra --config pipeline-config.json
 |---|---|
 | `config.py` | 15 Pydantic models defining the full configuration schema |
 | `state.py` | Pipeline state persistence — milestone phases, timestamps, test ownership |
-| `runner.py` | FSM driving one milestone through 5 phases with transition callbacks |
+| `runner.py` | FSM driving one milestone through 4 phases with transition callbacks |
 | `cli.py` | CLI entry point — argument parsing, service initialization, signal handling |
 | `git_ops.py` | All git operations — branches, merges, tags, conflict detection |
 | `subprocess_utils.py` | Single choke point for all subprocess calls, dry-run mode |
@@ -151,7 +146,7 @@ ralph-pipeline validate-infra --config pipeline-config.json
 | `infra/health.py` | TCP health checks for test dependency services |
 | `infra/test_infra.py` | Docker test infrastructure lifecycle management |
 | `infra/test_runner.py` | Test execution engine with AI-assisted fix cycles |
-| `infra/regression.py` | Post-merge failure classification (regression vs current) |
+| `infra/regression.py` | Test ownership tracking for regression classification |
 | `phases/*.py` | One module per pipeline phase with the core execution logic |
 | `data/ralph.sh` | The Ralph agent loop script (iterative Claude coding sessions) |
 | `data/skills/` | 14 bundled Claude skills for each pipeline role |

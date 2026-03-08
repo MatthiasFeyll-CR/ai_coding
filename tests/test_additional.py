@@ -357,35 +357,18 @@ class TestPhaseDryRun:
         )
         assert result is True
 
-    def test_merge_verify_dry_run(self):
-        """Test run_merge_verify returns cleanly in dry-run mode."""
-        from ralph_pipeline.phases.merge_verify import run_merge_verify
-
-        state = PipelineState.initialize(MINIMAL_CONFIG, "main")
-        plogger = MagicMock()
-        run_merge_verify(
-            milestone=MINIMAL_CONFIG.milestones[0],
-            config=MINIMAL_CONFIG,
-            state=state,
-            claude=MagicMock(),
-            test_runner=MagicMock(),
-            regression_analyzer=MagicMock(),
-            git=MagicMock(),
-            plogger=plogger,
-            project_root=Path("/tmp/dry-test"),
-        )
-        # Should log dry-run message
-        plogger.info.assert_called()
-
     def test_reconciliation_dry_run(self):
         """Test run_reconciliation returns cleanly in dry-run mode."""
         from ralph_pipeline.phases.reconciliation import run_reconciliation
 
+        state = PipelineState.initialize(MINIMAL_CONFIG, "main")
         plogger = MagicMock()
         run_reconciliation(
             milestone=MINIMAL_CONFIG.milestones[0],
             config=MINIMAL_CONFIG,
+            state=state,
             claude=MagicMock(),
+            regression_analyzer=MagicMock(),
             git=MagicMock(),
             plogger=plogger,
             project_root=Path("/tmp/dry-test"),

@@ -33,9 +33,9 @@ How tests are designed, written, and enforced across the pipeline.
 │    │  QA reviews coverage report + code quality                 │
 │    │                                                            │
 │    ▼                                                            │
-│  [Phase 4] Merge + Verify                                       │
+│  [Phase 4] Merge + Reconcile                                    │
 │    │  Registers test ownership: build_test_milestone_map()      │
-│    │  Runs full test suite. On fail → regression analysis:      │
+│    │  Ownership data used by QA phase of future milestones:     │
 │    │  ├─ REGRESSION (prev M) → targeted fix with merge diff    │
 │    │  └─ CURRENT (this M) → standard fix prompt                │
 │                                                                 │
@@ -94,10 +94,10 @@ How tests are designed, written, and enforced across the pipeline.
 │  └───────────────────────────────────────────────────────────┘  │
 │                          ▼                                      │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  TIER 2 — Full Rebuild (post-merge, ~3×/milestone)        │  │
+│  │  TIER 2 — Full Rebuild (QA phase, ~3×/milestone)          │  │
 │  │  All images rebuilt --no-cache + fresh services            │  │
 │  │  Catches stale builds, contract mismatches                │  │
-│  │  On fail: Claude fix cycle, HARD STOP if exhausted        │  │
+│  │  On fail: Claude fix cycle, escalation if exhausted       │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  Both tiers use real services (DB, Redis, etc.) — no mocks.    │
@@ -119,16 +119,8 @@ How tests are designed, written, and enforced across the pipeline.
 │   2      Per-story checks   T1     Yes*       test_command      │
 │   2      Post-Ralph run     T2     No         test_command      │
 │   3      Pre-QA run         T2     No         test_command      │
-│   4      Post-merge tests   T2     YES        test_command      │
-│   4      Integration tests  T2     YES        integration_cmd   │
-│   4      Gate checks        —      YES        gate_checks[]     │
 │                                                                 │
 │   * Ralph self-fixes inline before committing                   │
-│                                                                 │
-│   Post-merge (Phase 4) runs THREE different command types:      │
-│   D = test_command     (unit/contract tests)                    │
-│   E = integration_cmd  (cross-service/E2E — if configured)     │
-│   F = gate_checks[]    (lint, typecheck, docker build)          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -138,9 +130,9 @@ How tests are designed, written, and enforced across the pipeline.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  REGRESSION ANALYSIS (Phase 4 — post-merge)                     │
+│  REGRESSION ANALYSIS (Phase 3 — QA with ownership data)         │
 │                                                                 │
-│  Tests fail after merge                                         │
+│  Tests fail during QA                                           │
 │       │                                                         │
 │       ▼                                                         │
 │  Parse failing test files from output                           │

@@ -1,4 +1,4 @@
-"""Milestone FSM runner — drives one milestone through its 5 phases.
+"""Milestone FSM runner — drives one milestone through its phases.
 
 Uses the `transitions` library for state machine management.
 """
@@ -16,12 +16,10 @@ from ralph_pipeline.infra.regression import RegressionAnalyzer
 from ralph_pipeline.infra.test_infra import TestInfraManager
 from ralph_pipeline.infra.test_runner import TestRunner
 from ralph_pipeline.log import PipelineLogger
-from ralph_pipeline.phases.merge_verify import (MergeVerifyError,
-                                                run_merge_verify)
 from ralph_pipeline.phases.prd_generation import run_prd_generation
 from ralph_pipeline.phases.qa_review import run_qa_review
 from ralph_pipeline.phases.ralph_execution import run_ralph_execution
-from ralph_pipeline.phases.reconciliation import run_reconciliation
+from ralph_pipeline.phases.reconciliation import MergeError, run_reconciliation
 from ralph_pipeline.state import PipelineState
 from ralph_pipeline.usage import EventLogger
 
@@ -30,7 +28,11 @@ class MilestoneRunner:
     """FSM for executing one milestone through all pipeline phases.
 
     States: pending → prd_generation → ralph_execution → qa_review →
-            merge_verify → reconciliation → complete | failed
+            reconciliation → complete | failed
+
+    The reconciliation phase now includes the merge operation (previously
+    a separate phase).  In a linear single-agent pipeline the merge is
+    trivial and needs no post-merge verification.
 
     On resume, the FSM starts in the saved state and continues from there.
     """
@@ -40,7 +42,6 @@ class MilestoneRunner:
         "prd_generation",
         "ralph_execution",
         "qa_review",
-        "merge_verify",
         "reconciliation",
         "complete",
         "failed",
@@ -68,7 +69,7 @@ class MilestoneRunner:
         {
             "trigger": "qa_passed",
             "source": "qa_review",
-            "dest": "merge_verify",
+            "dest": "reconciliation",
             "after": "_on_phase_start",
         },
         {
@@ -76,12 +77,6 @@ class MilestoneRunner:
             "source": "qa_review",
             "dest": "ralph_execution",
             "after": "_on_bugfix",
-        },
-        {
-            "trigger": "merge_done",
-            "source": "merge_verify",
-            "dest": "reconciliation",
-            "after": "_on_phase_start",
         },
         {
             "trigger": "reconciled",
@@ -200,7 +195,6 @@ class MilestoneRunner:
             "prd_generation": self._run_prd_generation,
             "ralph_execution": self._run_ralph_execution,
             "qa_review": self._run_qa_review,
-            "merge_verify": self._run_merge_verify,
             "reconciliation": self._run_reconciliation,
         }
         handler = handlers.get(self.state)
@@ -274,51 +268,32 @@ class MilestoneRunner:
             )
             self.fail()
 
-    def _run_merge_verify(self) -> None:
-        """Phase 4: Merge + post-merge tests + gate checks."""
+    def _run_reconciliation(self) -> None:
+        """Phase 4: Merge feature branch + spec reconciliation."""
         self.event_logger.emit(
-            "phase_start", milestone=self.milestone.id, data={"phase": "merge_verify"}
+            "phase_start", milestone=self.milestone.id, data={"phase": "reconciliation"}
         )
         try:
-            run_merge_verify(
+            run_reconciliation(
                 milestone=self.milestone,
                 config=self.config,
                 state=self.pipeline_state,
                 claude=self.claude,
-                test_runner=self.test_runner,
                 regression_analyzer=self.regression_analyzer,
                 git=self.git,
                 plogger=self.plogger,
                 project_root=self.project_root,
                 state_file=self.state_file,
             )
-        except MergeVerifyError as e:
+        except MergeError as e:
             self._failure_reason = str(e)
             self.event_logger.emit(
                 "phase_end",
                 milestone=self.milestone.id,
-                data={"phase": "merge_verify", "error": str(e)},
+                data={"phase": "reconciliation", "error": str(e)},
             )
             self.fail()
             return
-        self.event_logger.emit(
-            "phase_end", milestone=self.milestone.id, data={"phase": "merge_verify"}
-        )
-        self.merge_done()
-
-    def _run_reconciliation(self) -> None:
-        """Phase 5: Spec reconciliation."""
-        self.event_logger.emit(
-            "phase_start", milestone=self.milestone.id, data={"phase": "reconciliation"}
-        )
-        run_reconciliation(
-            milestone=self.milestone,
-            config=self.config,
-            claude=self.claude,
-            git=self.git,
-            plogger=self.plogger,
-            project_root=self.project_root,
-        )
         self.event_logger.emit(
             "phase_end", milestone=self.milestone.id, data={"phase": "reconciliation"}
         )

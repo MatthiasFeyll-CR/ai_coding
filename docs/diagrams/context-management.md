@@ -138,7 +138,7 @@ docs/04-test-arch/   ──┼────► Context weight check
                                    │
                                    ▼
                     ┌────────────────────────────────────┐
-                    │  QA + Merge + Reconcile (Phases 3-5)│
+                    │  QA + Merge + Reconcile (Phases 3-4)│
                     │  Archive progress.txt + prd.json    │
                     │  → .ralph/archive/<slug>/           │
                     │  Next milestone starts with clean   │

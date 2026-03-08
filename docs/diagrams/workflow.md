@@ -71,9 +71,9 @@
   │  framework boilerplate. Writes concrete test_execution commands     │
   │  back into the config.                                              │
   │                                                                     │
-  │  Iterates through milestones sequentially, each runs 5 phases:      │
-  │  PRD + Context Bundle → Ralph Coding → QA Review →                  │
-  │  Merge+Verify → Reconcile                                           │
+│  Iterates through milestones sequentially, each runs 4 phases:      │
+│  PRD + Context Bundle → Ralph Coding → QA Review →                  │
+│  Merge+Reconcile                                                    │
   │                                                                     │
   │  Skills invoked: /prd_writer, /qa_engineer, /spec_reconciler        │
   │  State persisted at .ralph/state.json after each phase transition   │
