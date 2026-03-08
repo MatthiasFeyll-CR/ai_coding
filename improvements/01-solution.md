@@ -119,7 +119,7 @@ Reference table: `milestone-N.md` → `milestone-N.json`
 
 1. **`prd_generation.py`** handles both JSON and legacy MD — backward compatible
 2. **`prompts.py`** has a default `structured_scope=""` — old callers still work
-3. **All downstream phases** (ralph_execution, qa_review, merge_verify, reconciliation) are unaffected — they consume `prd-mN.json` which is unchanged in format
+3. **All downstream phases** (ralph_execution, qa_review, reconciliation) are unaffected — they consume `prd-mN.json` which is unchanged in format
 
 ### Things the pipeline executor should be aware of
 

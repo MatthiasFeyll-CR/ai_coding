@@ -15,7 +15,7 @@ Read the referenced files to get full context before making recommendations.
 
 ## System Overview
 
-Ralph Pipeline runs Phase 5 (Spec Reconciliation) after each milestone is merged and verified. The reconciliation step:
+Ralph Pipeline runs Phase 4 (Merge + Spec Reconciliation) after each milestone. The reconciliation step:
 
 1. Reads `progress.txt` and QA reports for the completed milestone
 2. Compares what was actually built vs. what the specs say
@@ -28,7 +28,7 @@ This keeps specs as the "source of truth" for future milestones.
 
 ## The Problem
 
-Phase 5 is explicitly **non-fatal**. If reconciliation fails twice, the pipeline logs a warning and continues:
+Phase 4's reconciliation step is explicitly **non-fatal**. If reconciliation fails twice, the pipeline logs a warning and continues:
 
 ### From `src/ralph_pipeline/phases/reconciliation.py`:
 
@@ -92,7 +92,7 @@ From `spec_reconciler/SKILL.md`, the reconciler categorizes changes:
 - **FEATURE DESIGN** — needs user approval
 - **LARGE TECHNICAL** — needs user approval
 
-In automated pipeline mode, the reconciliation prompt says: "Auto-apply ALL changes (pipeline trusts QA — no manual approval needed)." But the skill instructions define approval gates for feature/large changes. This creates a potential conflict in the reconciler's behavior.
+In automated pipeline mode, the reconciliation prompt now classifies changes by autonomy level: SMALL TECHNICAL (auto-apply), FEATURE DESIGN and LARGE TECHNICAL (apply but flag for review). This aligns with the skill's own classification.\n\n> **Update:** The reconciliation prompt has been fixed to respect autonomy levels. See the current `reconciliation_prompt()` in `prompts.py`.
 
 ### From the reconciliation prompt
 
@@ -114,18 +114,18 @@ The prompt overrides the skill's autonomy levels. Whether the reconciler AI corr
 
 | File | Role |
 |------|------|
-| `src/ralph_pipeline/phases/reconciliation.py` | Phase 5 — non-fatal, 2 attempts |
+| `src/ralph_pipeline/phases/reconciliation.py` | Phase 4 — non-fatal, 2 attempts |
 | `src/ralph_pipeline/ai/prompts.py` | `reconciliation_prompt()` — overrides skill autonomy levels |
 | `src/ralph_pipeline/data/skills/spec_reconciler/SKILL.md` | Defines 3 autonomy levels; pipeline overrides to auto-apply all |
 | `src/ralph_pipeline/data/skills/prd_writer/SKILL.md` | Reads upstream docs that may be stale |
-| `src/ralph_pipeline/runner.py` | `_run_reconciliation()` — calls Phase 5, doesn't check outcome |
+| `src/ralph_pipeline/runner.py` | `_run_reconciliation()` — calls Phase 4, doesn't check outcome |
 | `src/ralph_pipeline/state.py` | No tracking of reconciliation success/failure per milestone |
 
 ### Runner code — reconciliation outcome ignored
 
 ```python
 def _run_reconciliation(self) -> None:
-    """Phase 5: Spec reconciliation."""
+    """Phase 4: Spec reconciliation."""
     run_reconciliation(
         milestone=self.milestone,
         config=self.config,

@@ -44,9 +44,9 @@ Every milestone passes through these phases, managed by a finite state machine (
 
 ```
 pending → prd_generation → ralph_execution → qa_review → reconciliation → complete
-                                ↑                |
-                                └── qa_needs_fix ┘
 ```
+
+> Bugfix cycles run *inside* Phase 3 (`run_qa_review()`), not as FSM transitions. On QA FAIL, Ralph bugfix mode is triggered internally, then QA re-runs. Up to `max_bugfix_cycles` iterations.
 
 ### Phase 0 — Infrastructure Bootstrap (runs once)
 
@@ -62,7 +62,7 @@ Creates feature branch `ralph/mN-slug`, injects runtime footer (test commands, g
 
 ### Phase 3 — QA Review (blocking)
 
-Runs full test suite (Tier 2), analyzes test coverage against PRD test IDs (3-tier extraction + 3-tier finding), invokes QA Engineer skill. On FAIL verdict, triggers bugfix cycle: refreshes context with current codebase snapshot + QA summary, re-runs Ralph in bugfix mode, then re-runs QA. Up to `max_bugfix_cycles` iterations. On exhaustion, writes escalation report and **the pipeline halts** — the milestone is marked as failed, guaranteeing that no milestone proceeds to merge without passing QA.
+Runs full test suite (Tier 2), executes configured gate checks (typecheck, lint, etc.), analyzes test coverage against PRD test IDs (3-tier extraction + 3-tier finding), invokes QA Engineer skill. Two mechanistic hard gates ensure safety: (1) non-zero test exit code overrides any AI PASS verdict, and (2) failed required gate checks override any AI PASS verdict. On FAIL verdict, triggers bugfix cycle: classifies failures as REGRESSION vs CURRENT, refreshes context with current codebase snapshot + QA summary + regression context, re-runs Ralph in bugfix mode, then re-runs QA. Up to `max_bugfix_cycles` iterations. On exhaustion, writes escalation report and **the pipeline halts** — the milestone is marked as failed, guaranteeing that no milestone proceeds to merge without passing QA.
 
 ### Phase 4 — Merge + Reconciliation
 

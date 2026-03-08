@@ -28,6 +28,8 @@ Instructions:
 - Read {archive_dir}/ for learnings from previous milestone runs.
 - Write the PRD JSON directly to {tasks_dir}/prd-m{milestone_id}.json (no intermediate markdown PRD — go straight from milestone scope to JSON)
 - Write the context bundle to {scripts_dir}/context.md (see Section 8 of your skill instructions)
+- Do NOT include test commands, gate check commands, or quality check commands in context.md
+  (these are injected at runtime by the pipeline into CLAUDE.md from pipeline-config.json)
 - Branch name must be: ralph/m{milestone_id}-{slug}
 - Follow the exact JSON structure with userStories array, each having: id, title, description, acceptanceCriteria, priority, passes (false), notes.{drift_section}"""
 
@@ -46,6 +48,7 @@ def qa_review_prompt(
     test_arch_ref: str,
     qa_report_path: str,
     prd_json_path: str,
+    gate_report: str = "",
 ) -> str:
     """Build the QA review prompt. See bash run_qa()."""
     test_results_section = ""
@@ -73,6 +76,14 @@ Tests verify acceptance criteria from the PRD — do NOT dismiss test failures."
 IMPORTANT: Any test ID listed as MISSING above is a DEFECT. Ralph was required to implement these tests.
 Include a 'Test Matrix Coverage' section in your QA report with the full FOUND/MISSING breakdown."""
 
+    gate_section = ""
+    if gate_report:
+        gate_section = f"""
+{gate_report}
+
+IMPORTANT: Any REQUIRED gate check listed as FAILED above is a DEFECT that must be fixed.
+Include a 'Gate Check Results' section in your QA report."""
+
     return f"""{skill_content}
 
 ARGUMENTS: Review milestone M{milestone_id} ({slug}).
@@ -81,6 +92,7 @@ PRD: {prd_path}
 Progress log: {progress_path}
 {test_results_section}
 {coverage_section}
+{gate_section}
 {test_arch_ref}
 Instructions:
 - Read the PRD at {prd_path} and the progress log at {progress_path}
@@ -254,9 +266,19 @@ References:
 Instructions:
 - Read progress file and QA report for M{milestone}
 - Compare actual implementation against upstream spec docs
-- Auto-apply ALL changes (pipeline trusts QA — no manual approval needed)
+- Classify each change by autonomy level:
+  - SMALL TECHNICAL (typos, formatting, path corrections): auto-apply
+  - FEATURE DESIGN (new endpoints, changed data models): apply but flag prominently in changelog
+  - LARGE TECHNICAL (architectural changes): apply but flag prominently in changelog
 - Update spec docs to match reality where implementation deviated
-- Record all changes in {recon_dir}/m{milestone}-changes.md"""
+- Record all changes in {recon_dir}/m{milestone}-changes.md with autonomy classification
+- Flag FEATURE DESIGN and LARGE TECHNICAL changes clearly so they can be reviewed
+
+CRITICAL CONSTRAINT — docs-only modifications:
+- You may ONLY create or modify files under the docs/ directory.
+- Do NOT modify source code, test files, configuration files, or any file outside docs/.
+- Your job is to update DOCUMENTATION to match reality, NOT to change the implementation.
+- Any changes outside docs/ will be automatically detected and reverted by the pipeline."""
 
 
 # ── Phase 0: Infrastructure Bootstrap prompts ──

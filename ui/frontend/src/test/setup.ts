@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import React from 'react';
+import { vi } from 'vitest';
 
 // Polyfill ResizeObserver for jsdom (needed by ReactFlow)
 global.ResizeObserver = class ResizeObserver {

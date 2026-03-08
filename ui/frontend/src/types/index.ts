@@ -206,3 +206,77 @@ export interface WebSocketEvents {
     message: string;
   };
 }
+
+// ── Test Analytics ──────────────────────────────────────────────────────────
+
+export interface TestAnalyticsSummary {
+  total_test_runs: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  total_fix_cycles: number;
+  total_bugfix_cycles: number;
+  total_test_fix_cycles: number;
+  avg_duration_s: number;
+  total_test_time_s: number;
+  qa_pass_count: number;
+  qa_fail_count: number;
+  qa_first_pass_count: number;
+  max_bugfix_cycles: number;
+}
+
+export interface MilestoneTestAnalytics {
+  id: number;
+  name: string;
+  phase: string;
+  bugfix_cycles: number;
+  test_fix_cycles: number;
+  test_runs: number;
+  tests_passed: number;
+  tests_failed: number;
+  pass_rate: number;
+  total_duration_s: number;
+  avg_duration_s: number;
+  qa_verdicts: number;
+  final_verdict: string;
+  first_pass: boolean;
+}
+
+export interface EnforcementPoint {
+  label: string;
+  runs: number;
+  passed: number;
+  failed: number;
+}
+
+export interface TimelineEvent {
+  ts: string;
+  type: 'test_run' | 'qa_verdict';
+  milestone: number;
+  cycle: number;
+  passed?: boolean;
+  duration_s?: number;
+  verdict?: string;
+}
+
+export interface FailingFile {
+  file: string;
+  failures: number;
+}
+
+export interface QaReport {
+  milestone: number;
+  cycle: number;
+  passed: boolean;
+  exit_code: number;
+  file: string;
+}
+
+export interface TestAnalytics {
+  summary: TestAnalyticsSummary;
+  milestones: MilestoneTestAnalytics[];
+  enforcement_points: EnforcementPoint[];
+  timeline: TimelineEvent[];
+  top_failing_files: FailingFile[];
+  qa_reports: QaReport[];
+}

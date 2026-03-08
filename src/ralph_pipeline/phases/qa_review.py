@@ -21,7 +21,7 @@ from ralph_pipeline.git_ops import GitOps
 from ralph_pipeline.infra.test_runner import TestRunner
 from ralph_pipeline.log import PipelineLogger
 from ralph_pipeline.phases.ralph_execution import run_ralph_bugfix
-from ralph_pipeline.subprocess_utils import is_dry_run
+from ralph_pipeline.subprocess_utils import SubprocessError, is_dry_run, run_command
 from ralph_pipeline.usage import EventLogger
 
 
@@ -35,6 +35,86 @@ def _extract_verdict(qa_report: Path) -> str:
     if re.search(r"(verdict|result)[:\s*]*\s*fail", text, re.IGNORECASE):
         return "FAIL"
     return "UNKNOWN"
+
+
+def _run_gate_checks(
+    config: PipelineConfig,
+    project_root: Path,
+    plogger: PipelineLogger,
+) -> tuple[bool, str]:
+    """Execute gate check commands from config and return (all_passed, report).
+
+    Gate checks are mechanistic quality gates (typecheck, lint, security
+    scans, etc.) that run as shell commands.  Each check with
+    ``required=True`` must pass for the overall result to be True.
+
+    Returns:
+        Tuple of (all_required_passed, gate_report_text).
+    """
+    checks = config.gate_checks.checks
+    if not checks:
+        return True, ""
+
+    plogger.info(f"Running {len(checks)} gate checks...")
+    results: list[str] = []
+    all_required_passed = True
+
+    for check in checks:
+        # Evaluate condition if present
+        if check.condition:
+            try:
+                cond = run_command(
+                    check.condition,
+                    cwd=project_root,
+                    check=False,
+                    shell=True,
+                    timeout=10,
+                )
+                if cond.returncode != 0:
+                    plogger.info(
+                        f"[gate] {check.name}: condition not met — skipping"
+                    )
+                    results.append(f"  - {check.name}: SKIPPED (condition not met)")
+                    continue
+            except SubprocessError:
+                pass
+
+        try:
+            result = run_command(
+                check.command,
+                cwd=project_root,
+                check=False,
+                shell=True,
+                timeout=300,
+            )
+            if result.returncode == 0:
+                plogger.success(f"[gate] {check.name}: PASSED")
+                results.append(f"  - {check.name}: PASSED")
+            else:
+                req_tag = " (REQUIRED)" if check.required else " (optional)"
+                plogger.error(
+                    f"[gate] {check.name}: FAILED (exit {result.returncode}){req_tag}"
+                )
+                output_tail = "\n".join(
+                    (result.stdout or "").splitlines()[-20:]
+                )
+                results.append(
+                    f"  - {check.name}: FAILED{req_tag}\n"
+                    f"    Command: {check.command}\n"
+                    f"    Exit code: {result.returncode}\n"
+                    f"    Output (last 20 lines):\n    {output_tail}"
+                )
+                if check.required:
+                    all_required_passed = False
+        except SubprocessError as e:
+            req_tag = " (REQUIRED)" if check.required else " (optional)"
+            plogger.error(f"[gate] {check.name}: ERROR{req_tag}: {e}")
+            results.append(f"  - {check.name}: ERROR{req_tag}: {e}")
+            if check.required:
+                all_required_passed = False
+
+    report = "GATE CHECK RESULTS (run by pipeline):\n" + "\n".join(results)
+    return all_required_passed, report
 
 
 _TEST_ID_PATTERN = re.compile(
@@ -300,6 +380,7 @@ def run_qa_review(
     plogger: PipelineLogger,
     project_root: Path,
     event_logger: EventLogger | None = None,
+    regression_analyzer: object | None = None,
 ) -> bool:
     """Run QA review with bugfix cycles.
 
@@ -322,9 +403,75 @@ def run_qa_review(
     log_dir = project_root / ".ralph" / "logs" / f"m{milestone.id}-{slug}"
     log_dir.mkdir(parents=True, exist_ok=True)
 
+    result = None  # TestResult from previous cycle (used for regression analysis)
+
     for cycle in range(0, config.qa.max_bugfix_cycles + 1):
         if cycle > 0:
             plogger.info(f"Bugfix cycle {cycle} for M{milestone.id}")
+
+            # ── Regression classification for bugfix context ──
+            regression_context = ""
+            if regression_analyzer is not None and result is not None:
+                from ralph_pipeline.infra.regression import RegressionAnalyzer
+
+                if isinstance(regression_analyzer, RegressionAnalyzer):
+                    failures = regression_analyzer.classify(
+                        result.output, milestone.id
+                    )
+                    regressions = [
+                        f for f in failures if f.classification == "REGRESSION"
+                    ]
+                    current = [
+                        f for f in failures if f.classification == "CURRENT"
+                    ]
+                    if regressions:
+                        plogger.info(
+                            f"Regression detected: {len(regressions)} test file(s) "
+                            f"from previous milestones"
+                        )
+                        reg_lines = [
+                            "## Regression Analysis",
+                            "",
+                            "The pipeline has classified the test failures:",
+                            "",
+                            "**REGRESSION failures** (tests from PREVIOUS milestones "
+                            "that broke — these are the priority):",
+                        ]
+                        for f in regressions:
+                            reg_lines.append(
+                                f"  - {f.file} (owner: M{f.owner_milestone})"
+                            )
+                        if current:
+                            reg_lines.append("")
+                            reg_lines.append(
+                                "**Current milestone failures** (tests "
+                                f"from M{milestone.id}):"
+                            )
+                            for f in current:
+                                reg_lines.append(f"  - {f.file}")
+                        reg_lines.extend([
+                            "",
+                            "Fix SOURCE CODE to restore compatibility with "
+                            "previous tests. Do NOT modify previous milestone "
+                            "test files.",
+                        ])
+                        regression_context = "\n".join(reg_lines)
+
+                        # Build archived context for regressed milestones
+                        archive_dir = project_root / ".ralph" / "archive"
+                        archived = regression_analyzer.build_fix_context(
+                            regressions,
+                            milestone.id,
+                            archive_dir=(
+                                archive_dir if archive_dir.exists() else None
+                            ),
+                        )
+                        if archived:
+                            regression_context += (
+                                "\n\n## Context from Regressed Milestones\n\n"
+                                + archived
+                            )
+
             run_ralph_bugfix(
                 milestone,
                 config,
@@ -335,6 +482,7 @@ def run_qa_review(
                 event_logger=event_logger,
                 bugfix_cycle=cycle,
                 qa_report_path=qa_report,
+                regression_context=regression_context,
             )
 
         plogger.info(f"Running QA for M{milestone.id} (cycle {cycle})...")
@@ -350,6 +498,25 @@ def run_qa_review(
         test_runner.store_results(
             result,
             Path(qa_dir) / f"test-results-qa-m{milestone.id}-cycle{cycle}.md",
+        )
+
+        # Emit structured test event for analytics
+        if event_logger:
+            event_logger.emit(
+                "test_run",
+                milestone=milestone.id,
+                phase="qa_review",
+                cycle=cycle,
+                tier=2,
+                passed=result.passed,
+                exit_code=result.exit_code,
+                duration_s=result.duration_seconds,
+                label=result.label,
+            )
+
+        # ── Run gate checks (typecheck, lint, security, etc.) ──
+        gates_passed, gate_report = _run_gate_checks(
+            config, project_root, plogger,
         )
 
         # Read skill content
@@ -391,6 +558,7 @@ def run_qa_review(
             test_arch_ref=test_arch_ref,
             qa_report_path=str(qa_report),
             prd_json_path=str(prd_path),
+            gate_report=gate_report,
         )
 
         try:
@@ -406,6 +574,35 @@ def run_qa_review(
 
         verdict = _extract_verdict(qa_report)
         plogger.info(f"QA verdict for M{milestone.id}: {verdict}")
+
+        # ── Hard gate: test exit code overrides AI verdict ──
+        # The AI-determined verdict is a secondary signal. If the test suite
+        # itself failed (non-zero exit code), the verdict MUST be FAIL
+        # regardless of what the QA agent wrote in the report.
+        if not result.passed and verdict == "PASS":
+            plogger.warning(
+                f"Tests failed (exit code {result.exit_code}) but QA reported "
+                f"PASS — overriding verdict to FAIL (test results are authoritative)"
+            )
+            verdict = "FAIL"
+
+        # ── Hard gate: required gate check failures override AI verdict ──
+        if not gates_passed and verdict == "PASS":
+            plogger.warning(
+                "Required gate checks failed but QA reported PASS — "
+                "overriding verdict to FAIL (gate checks are authoritative)"
+            )
+            verdict = "FAIL"
+
+        # Emit structured QA verdict event for analytics
+        if event_logger:
+            event_logger.emit(
+                "qa_verdict",
+                milestone=milestone.id,
+                cycle=cycle,
+                verdict=verdict,
+                test_passed=result.passed,
+            )
 
         if verdict == "PASS":
             _archive_milestone(milestone, config, project_root, plogger)

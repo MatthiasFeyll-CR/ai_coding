@@ -24,13 +24,102 @@ from ralph_pipeline.log import PipelineLogger
 from ralph_pipeline.phases.deterministic_recon import \
     run_deterministic_reconciliation
 from ralph_pipeline.state import PipelineState
-from ralph_pipeline.subprocess_utils import is_dry_run
+from ralph_pipeline.subprocess_utils import is_dry_run, run_command
+
+
+class ReconciliationScopeViolation(Exception):
+    """Reconciliation modified files outside the allowed docs/ directory."""
+
+    pass
 
 
 class MergeError(Exception):
     """Fatal error during merge."""
 
     pass
+
+
+# Directories the reconciler is allowed to modify.
+# docs/ is the primary target; .ralph/ holds pipeline working artifacts.
+_ALLOWED_PREFIXES = ("docs/", ".ralph/")
+
+
+def _check_docs_only_changes(
+    config: PipelineConfig,
+    git: GitOps,
+    plogger: PipelineLogger,
+    project_root: Path,
+    milestone_id: int,
+) -> None:
+    """Verify that reconciliation only modified files under docs/.
+
+    Checks both staged and unstaged changes. If any file outside the
+    allowed directories was created or modified, reverts ALL unstaged
+    changes and raises ReconciliationScopeViolation (hard exit).
+    """
+    # Collect all changed files (staged + unstaged + untracked)
+    result = run_command(
+        ["git", "diff", "--name-only"],
+        cwd=project_root,
+        check=False,
+    )
+    unstaged = [f for f in result.stdout.splitlines() if f.strip()]
+
+    result = run_command(
+        ["git", "diff", "--cached", "--name-only"],
+        cwd=project_root,
+        check=False,
+    )
+    staged = [f for f in result.stdout.splitlines() if f.strip()]
+
+    result = run_command(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=project_root,
+        check=False,
+    )
+    untracked = [f for f in result.stdout.splitlines() if f.strip()]
+
+    all_changed = set(unstaged + staged + untracked)
+
+    # Filter to violations — files outside allowed directories
+    violations = [
+        f for f in all_changed
+        if not any(f.startswith(prefix) for prefix in _ALLOWED_PREFIXES)
+    ]
+
+    if not violations:
+        return
+
+    # Log each violation
+    plogger.error(
+        f"RECONCILIATION SCOPE VIOLATION: M{milestone_id} reconciler "
+        f"modified {len(violations)} file(s) outside docs/:"
+    )
+    for v in violations:
+        plogger.error(f"  - {v}")
+
+    # Revert all uncommitted changes to prevent non-docs modifications
+    # from persisting
+    run_command(
+        ["git", "checkout", "."],
+        cwd=project_root,
+        check=False,
+    )
+    run_command(
+        ["git", "clean", "-fd"],
+        cwd=project_root,
+        check=False,
+    )
+
+    plogger.error(
+        "All uncommitted changes reverted. Reconciliation aborted. "
+        "The Spec Reconciler must only modify files under docs/."
+    )
+
+    raise ReconciliationScopeViolation(
+        f"Reconciliation for M{milestone_id} modified files outside docs/: "
+        f"{', '.join(violations)}"
+    )
 
 
 def _merge_feature_branch(
@@ -167,6 +256,15 @@ def _run_spec_reconciliation(
             )
 
         if changelog.exists():
+            # Guard: verify reconciliation only modified docs
+            _check_docs_only_changes(
+                config=config,
+                git=git,
+                plogger=plogger,
+                project_root=project_root,
+                milestone_id=milestone.id,
+            )
+
             git.commit_all(f"docs: spec reconciliation after M{milestone.id}")
             plogger.success(
                 f"Reconciliation complete for M{milestone.id} (changelog: {changelog})"

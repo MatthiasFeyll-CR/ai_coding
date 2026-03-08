@@ -1,11 +1,12 @@
 import type {
-    ExecutionLog,
-    MilestonesResponse,
-    PipelineState,
-    PreCheckResult,
-    Project,
-    StateSnapshot,
-    TokenUsage,
+  ExecutionLog,
+  MilestonesResponse,
+  PipelineState,
+  PreCheckResult,
+  Project,
+  StateSnapshot,
+  TestAnalytics,
+  TokenUsage,
 } from '@/types';
 import axios from 'axios';
 
@@ -57,6 +58,8 @@ export const pipelineApi = {
     api.get<TokenUsage>(`/pipeline/${projectId}/tokens`),
   getMilestones: (projectId: number) =>
     api.get<MilestonesResponse>(`/pipeline/${projectId}/milestones`),
+  getTestAnalytics: (projectId: number) =>
+    api.get<TestAnalytics>(`/pipeline/${projectId}/test-analytics`),
 };
 
 // Files

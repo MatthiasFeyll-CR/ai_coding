@@ -505,11 +505,16 @@ def run_ralph_bugfix(
     event_logger: EventLogger | None = None,
     bugfix_cycle: int = 1,
     qa_report_path: Path | None = None,
+    regression_context: str = "",
 ) -> None:
     """Re-run Ralph in bugfix mode (shorter iteration count).
 
     Before the agent loop, refreshes context.md with a current codebase
     snapshot and injects a bugfix-mode notice into CLAUDE.md.
+
+    If *regression_context* is provided (from regression analysis), it is
+    included in the bugfix context section of context.md so Ralph can
+    prioritise regression fixes.
     """
     scripts_dir = project_root / config.paths.scripts_dir
     slug = milestone.slug
@@ -544,6 +549,7 @@ def run_ralph_bugfix(
         git=git,
         plogger=plogger,
         qa_report_path=qa_report_path,
+        regression_context=regression_context,
     )
 
     # Inject bugfix mode notice into CLAUDE.md

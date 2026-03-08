@@ -65,8 +65,14 @@ For each cycle (0 to `max_bugfix_cycles`):
    - Find implemented IDs: `test-manifest.json` → Python AST → grep
 4. Build QA prompt with skill, results, coverage, test architecture
 5. Invoke Claude QA Engineer
-6. Extract PASS/FAIL verdict
+6. Extract PASS/FAIL verdict from AI-generated report via regex
 7. PASS → archive → proceed | FAIL at max → escalation report
+
+> **Design notes:**
+> - The AI verdict is extracted via `_extract_verdict()` regex, but **hard gates override it**: if the test exit code is non-zero or required gate checks fail, a PASS verdict is mechanistically overridden to FAIL. The AI report is still generated for diagnostic value.
+> - Gate checks (typecheck, lint, etc.) from `pipeline-config.json` are now executed by `_run_gate_checks()` before the verdict is finalized.
+> - Regression analysis classifies test failures as REGRESSION (owned by prior milestone) vs CURRENT before bugfix cycles. Regression context (archived acceptance criteria, merge diffs) is injected into the bugfix context.
+> - Bugfix cycles run inside `run_qa_review()`. On resume, the bugfix cycle counter restarts from 0.
 
 ## Phase 4: Merge + Reconciliation
 
@@ -83,6 +89,11 @@ For each cycle (0 to `max_bugfix_cycles`):
 3. Retry once if changelog not produced
 4. Non-fatal: failures tracked as reconciliation debt
 
+> **Design notes:**
+> - The reconciliation prompt classifies changes by autonomy level: SMALL TECHNICAL (auto-apply), FEATURE DESIGN and LARGE TECHNICAL (apply but flag for review). This aligns with the Spec Reconciler skill's own autonomy classification.
+> - **Docs-only guard**: After each reconciliation attempt, the pipeline checks `git diff` for any modified files outside `docs/` and `.ralph/`. If violations are found, all uncommitted changes are reverted (`git checkout . && git clean -fd`) and the pipeline hard-exits with `ReconciliationScopeViolation`.
+> - No post-merge tests are run — the assumption is that the merged code is byte-identical to what QA validated. Reconciliation can only commit documentation changes to the base branch.
+
 ## Error Handling
 
 | Phase | Error | Action |
@@ -92,9 +103,11 @@ For each cycle (0 to `max_bugfix_cycles`):
 | 1 | PRD generation fails | Retry once → abort milestone |
 | 1 | Domain split detected | HARD STOP (re-plan required) |
 | 2 | Max iterations reached | Proceed to QA (partial) |
-| 3 | QA FAIL after max cycles | Escalation report, continue |
+| 3 | QA FAIL after max cycles | Escalation report, milestone FAILS |
+| 3 | Test exit code != 0 | Hard gate: overrides AI PASS verdict to FAIL |
 | 4 | Merge conflict | Abort (should not happen) |
 | 4 | Reconciliation fails | Retry once → warn + continue |
+| 4 | Scope violation (non-docs files modified) | Revert all changes → HARD STOP |
 | * | Claude crash | Retry × max_retries |
 | * | Cost budget exceeded | Fatal, no retry |
 | * | SIGINT/SIGTERM | Persist state → teardown → exit |
@@ -114,3 +127,27 @@ For each cycle (0 to `max_bugfix_cycles`):
 | Drift report | `docs/05-reconciliation/mN-deterministic-drift.md` |
 | Git tags | `pre-mN-merge`, `mN-complete` |
 | Archive | `.ralph/archive/<slug>/prd.json`, `progress.txt` |
+
+## Known Limitations & Risks
+
+| # | Severity | Issue | Status |
+|---|----------|-------|--------|
+| 1 | ~~CRITICAL~~ | ~~QA verdict is AI-determined, not test-exit-code~~ | **RESOLVED** — test exit code hard gate overrides AI verdict |
+| 2 | CRITICAL | Phase 2 runs zero tests; Ralph self-grades via `<promise>COMPLETE</promise>` | **By design** — Phase 2 defers all testing to Phase 3 (see Phase 2 design rationale below) |
+| 3 | ~~CRITICAL~~ | ~~Gate checks are prompt suggestions, never executed~~ | **RESOLVED** — `_run_gate_checks()` now executes all configured gate checks |
+| 4 | ~~SEVERE~~ | ~~Reconciliation prompt overrides skill autonomy~~ | **RESOLVED** — prompt now classifies by autonomy level, flags non-trivial changes |
+| 5 | ~~SEVERE~~ | ~~FSM `qa_needs_fix` transition is dead code~~ | **RESOLVED** — dead transition removed |
+| 6 | ~~SEVERE~~ | ~~`run_test_fix_cycle()` never called; regression analysis not wired~~ | **RESOLVED** — regression classification wired into QA bugfix path |
+| 7 | ~~MODERATE~~ | ~~Test/gate commands in 3 places (config, CLAUDE.md footer, context.md)~~ | **RESOLVED** — quality commands removed from context.md; config → CLAUDE.md footer is single path |
+| 8 | MODERATE | Cross-milestone patterns depend on Ralph writing to `progress.txt` | No enforcement of pattern recording |
+| 9 | ~~MINOR~~ | ~~Resume checks phantom `merge_verify` state~~ | **RESOLVED** — dead code removed |
+| 10 | ~~MINOR~~ | ~~`cli.py:main()` has 6 duplicate `sys.exit(0)` calls~~ | **RESOLVED** — duplicates removed |
+
+## Phase 2 Design Rationale — No Pipeline-Enforced Tests
+
+Phase 2 intentionally does not run tests at the pipeline level. This is a deliberate architectural decision:
+
+1. **Separation of concerns**: Phase 2 is the *coding* phase. Phase 3 is the *verification* phase. Mixing them would couple Ralph's iteration budget to test infrastructure availability.
+2. **Tier 2 full-rebuild guarantee**: Phase 3 runs Tier 2 tests (force teardown → clean build → test), catching stale builds and contract mismatches that incremental testing during Phase 2 would miss.
+3. **Advisory testing via CLAUDE.md**: Ralph is *instructed* to run Tier 1 tests via the CLAUDE.md runtime footer. The pipeline does not enforce this, but Claude agents typically follow these instructions. Any failures Ralph misses are caught by Phase 3.
+4. **Bugfix cycle safety**: When Phase 3 fails, the bugfix cycle refreshes context with the full QA report and current codebase snapshot, giving Ralph targeted fix instructions rather than iterating blindly.

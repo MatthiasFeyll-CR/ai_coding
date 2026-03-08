@@ -1,6 +1,7 @@
 """Pipeline control API endpoints."""
 
 import json
+import re
 from pathlib import Path
 
 from database import db
@@ -429,3 +430,253 @@ def _build_phase0_entry(state_path, phase0_path, state=None):
                 phase0["started_at"] = phase0["completed_at"] or "unknown"
 
     return phase0
+
+
+@bp.route("/<int:project_id>/test-analytics", methods=["GET"])
+def get_test_analytics(project_id):
+    """Aggregate test analytics from pipeline.jsonl, state.json, and QA reports.
+
+    Returns structured data for the Test Analytics dashboard:
+    - summary KPIs (total runs, pass rate, fix cycles, avg duration)
+    - per-milestone breakdown (test runs, verdicts, bugfix cycles, durations)
+    - QA verdict timeline (every test_run and qa_verdict event)
+    - enforcement point stats (which phases generate most test failures)
+    - failing test files (most frequently failing files across all runs)
+    """
+    project = Project.query.get_or_404(project_id)
+    root = Path(project.root_path)
+    state_path = root / ".ralph" / "state.json"
+    log_path = root / ".ralph" / "logs" / "pipeline.jsonl"
+    qa_dir = root / "docs" / "08-qa"
+    config_path = Path(project.config_path)
+
+    # ── Load config for milestone names ──────────────────────────────────
+    milestone_names: dict[int, str] = {}
+    max_bugfix_cycles = 3
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                cfg = json.load(f)
+            for m in cfg.get("milestones", []):
+                if isinstance(m, dict):
+                    milestone_names[m["id"]] = m.get("name", f"M{m['id']}")
+            max_bugfix_cycles = cfg.get("qa", {}).get("max_bugfix_cycles", 3)
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    # ── Load state.json for milestone phase data ─────────────────────────
+    milestone_states: dict[int, dict] = {}
+    if state_path.exists():
+        try:
+            with open(state_path) as f:
+                state = json.load(f)
+            for mid_str, ms in state.get("milestones", {}).items():
+                mid = int(mid_str)
+                milestone_states[mid] = ms
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # ── Parse pipeline.jsonl for test_run and qa_verdict events ──────────
+    test_runs: list[dict] = []
+    qa_verdicts: list[dict] = []
+    test_fix_events: list[dict] = []
+
+    if log_path.exists():
+        try:
+            with open(log_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    ev = entry.get("event")
+                    if ev == "test_run":
+                        test_runs.append(entry)
+                    elif ev == "qa_verdict":
+                        qa_verdicts.append(entry)
+                    elif ev == "claude_invocation" and entry.get("phase") == "test_fix":
+                        test_fix_events.append(entry)
+        except OSError:
+            pass
+
+    # ── Parse QA report files for failing test details ───────────────────
+    failing_files: dict[str, int] = {}
+    qa_report_details: list[dict] = []
+
+    if qa_dir.exists():
+        # Parse test result files for failure details
+        for result_file in sorted(qa_dir.glob("test-results-qa-m*.md")):
+            content = result_file.read_text()
+            # Extract milestone and cycle from filename
+            fname_match = re.match(
+                r"test-results-qa-m(\d+)-cycle(\d+)\.md", result_file.name
+            )
+            if not fname_match:
+                continue
+            mid = int(fname_match.group(1))
+            cycle = int(fname_match.group(2))
+
+            passed = "Result: PASS" in content
+            exit_code_match = re.search(r"Exit code: (\d+)", content)
+            exit_code = int(exit_code_match.group(1)) if exit_code_match else -1
+
+            qa_report_details.append({
+                "milestone": mid,
+                "cycle": cycle,
+                "passed": passed,
+                "exit_code": exit_code,
+                "file": result_file.name,
+            })
+
+            if not passed:
+                # Extract FAILED test files from output
+                # pytest: FAILED path/to/test.py::test_name
+                for m in re.finditer(r"FAILED\s+([^\s:]+\.py)", content):
+                    f = m.group(1)
+                    failing_files[f] = failing_files.get(f, 0) + 1
+                # jest/vitest: FAIL path/to/test.spec.ts
+                for m in re.finditer(
+                    r"FAIL\s+([^\s]+\.(?:test|spec)\.[jt]sx?)", content
+                ):
+                    f = m.group(1)
+                    failing_files[f] = failing_files.get(f, 0) + 1
+
+    # ── Compute summary KPIs ─────────────────────────────────────────────
+    total_test_runs = len(test_runs)
+    passed_runs = sum(1 for r in test_runs if r.get("passed"))
+    failed_runs = total_test_runs - passed_runs
+    pass_rate = (passed_runs / total_test_runs * 100) if total_test_runs > 0 else 0
+
+    total_bugfix_cycles = sum(
+        ms.get("bugfix_cycle", 0) for ms in milestone_states.values()
+    )
+    total_test_fix_cycles = sum(
+        ms.get("test_fix_cycle", 0) for ms in milestone_states.values()
+    )
+    total_fix_cycles = total_bugfix_cycles + total_test_fix_cycles
+
+    durations = [r.get("duration_s", 0) for r in test_runs if r.get("duration_s")]
+    avg_duration = sum(durations) / len(durations) if durations else 0
+    total_test_time = sum(durations)
+
+    qa_pass_count = sum(1 for v in qa_verdicts if v.get("verdict") == "PASS")
+    qa_fail_count = sum(1 for v in qa_verdicts if v.get("verdict") == "FAIL")
+    qa_first_pass = 0  # milestones that passed QA on first attempt (cycle 0)
+    for v in qa_verdicts:
+        if v.get("verdict") == "PASS" and v.get("cycle", 0) == 0:
+            qa_first_pass += 1
+
+    # ── Per-milestone breakdown ──────────────────────────────────────────
+    milestones_analytics: list[dict] = []
+    all_milestone_ids = sorted(
+        set(
+            list(milestone_states.keys())
+            + [r.get("milestone", 0) for r in test_runs]
+            + [v.get("milestone", 0) for v in qa_verdicts]
+        )
+    )
+
+    for mid in all_milestone_ids:
+        if mid == 0:
+            continue  # Skip phase 0
+
+        ms_state = milestone_states.get(mid, {})
+        ms_test_runs = [r for r in test_runs if r.get("milestone") == mid]
+        ms_verdicts = [v for v in qa_verdicts if v.get("milestone") == mid]
+        ms_passed = sum(1 for r in ms_test_runs if r.get("passed"))
+        ms_failed = len(ms_test_runs) - ms_passed
+        ms_durations = [r.get("duration_s", 0) for r in ms_test_runs if r.get("duration_s")]
+
+        # Determine final QA outcome
+        final_verdict = "pending"
+        if ms_verdicts:
+            final_verdict = ms_verdicts[-1].get("verdict", "UNKNOWN")
+
+        milestones_analytics.append({
+            "id": mid,
+            "name": milestone_names.get(mid, f"Milestone {mid}"),
+            "phase": ms_state.get("phase", "pending"),
+            "bugfix_cycles": ms_state.get("bugfix_cycle", 0),
+            "test_fix_cycles": ms_state.get("test_fix_cycle", 0),
+            "test_runs": len(ms_test_runs),
+            "tests_passed": ms_passed,
+            "tests_failed": ms_failed,
+            "pass_rate": (ms_passed / len(ms_test_runs) * 100) if ms_test_runs else 0,
+            "total_duration_s": sum(ms_durations),
+            "avg_duration_s": sum(ms_durations) / len(ms_durations) if ms_durations else 0,
+            "qa_verdicts": len(ms_verdicts),
+            "final_verdict": final_verdict,
+            "first_pass": any(
+                v.get("verdict") == "PASS" and v.get("cycle", 0) == 0
+                for v in ms_verdicts
+            ),
+        })
+
+    # ── Enforcement point breakdown ──────────────────────────────────────
+    enforcement_points = {
+        "qa_review": {"label": "QA Review (Phase 3)", "runs": 0, "passed": 0, "failed": 0},
+        "test_fix": {"label": "Test Fix Cycles", "runs": 0, "passed": 0, "failed": 0},
+    }
+    for r in test_runs:
+        phase = r.get("phase", "unknown")
+        if phase in enforcement_points:
+            enforcement_points[phase]["runs"] += 1
+            if r.get("passed"):
+                enforcement_points[phase]["passed"] += 1
+            else:
+                enforcement_points[phase]["failed"] += 1
+
+    # ── Timeline events (for chart) ──────────────────────────────────────
+    timeline: list[dict] = []
+    for r in test_runs:
+        timeline.append({
+            "ts": r.get("ts", ""),
+            "type": "test_run",
+            "milestone": r.get("milestone", 0),
+            "cycle": r.get("cycle", 0),
+            "passed": r.get("passed", False),
+            "duration_s": r.get("duration_s", 0),
+        })
+    for v in qa_verdicts:
+        timeline.append({
+            "ts": v.get("ts", ""),
+            "type": "qa_verdict",
+            "milestone": v.get("milestone", 0),
+            "cycle": v.get("cycle", 0),
+            "verdict": v.get("verdict", "UNKNOWN"),
+        })
+    timeline.sort(key=lambda e: e.get("ts", ""))
+
+    # ── Top failing files ────────────────────────────────────────────────
+    top_failing = sorted(
+        [{"file": f, "failures": c} for f, c in failing_files.items()],
+        key=lambda x: x["failures"],
+        reverse=True,
+    )[:15]
+
+    return jsonify({
+        "summary": {
+            "total_test_runs": total_test_runs,
+            "passed": passed_runs,
+            "failed": failed_runs,
+            "pass_rate": round(pass_rate, 1),
+            "total_fix_cycles": total_fix_cycles,
+            "total_bugfix_cycles": total_bugfix_cycles,
+            "total_test_fix_cycles": total_test_fix_cycles,
+            "avg_duration_s": round(avg_duration, 2),
+            "total_test_time_s": round(total_test_time, 2),
+            "qa_pass_count": qa_pass_count,
+            "qa_fail_count": qa_fail_count,
+            "qa_first_pass_count": qa_first_pass,
+            "max_bugfix_cycles": max_bugfix_cycles,
+        },
+        "milestones": milestones_analytics,
+        "enforcement_points": list(enforcement_points.values()),
+        "timeline": timeline,
+        "top_failing_files": top_failing,
+        "qa_reports": qa_report_details,
+    })

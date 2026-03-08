@@ -26,8 +26,10 @@ class ContextOverflowError(Exception):
 
 # ── Section priority (highest = kept, lowest = truncated first) ──────────
 # Order matters: index 0 = highest priority (never truncated).
+# NOTE: Quality commands are NOT in context.md — they are injected at
+# runtime into CLAUDE.md footer from pipeline-config.json (single source
+# of truth).
 SECTION_PRIORITY = [
-    "Quality Checks",
     "Test Infrastructure Setup",
     "Test Specifications",
     "Architecture Reference",

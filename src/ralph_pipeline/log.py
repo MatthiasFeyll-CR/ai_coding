@@ -92,11 +92,10 @@ class PipelineLogger:
         mins, secs = divmod(int(elapsed), 60)
 
         phase_map = {
-            "prd_generation": ("PRD Generation", "1/5"),
-            "ralph_execution": ("Ralph Execution", "2/5"),
-            "qa_review": ("QA Review", "3/5"),
-            "merge_verify": ("Merge + Verify", "4/5"),
-            "reconciliation": ("Reconciliation", "5/5"),
+            "prd_generation": ("PRD Generation", "1/4"),
+            "ralph_execution": ("Ralph Execution", "2/4"),
+            "qa_review": ("QA Review", "3/4"),
+            "reconciliation": ("Merge + Reconciliation", "4/4"),
         }
         phase_name, phase_num = phase_map.get(self._phase, (self._phase, ""))
 

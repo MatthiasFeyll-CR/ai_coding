@@ -3,8 +3,8 @@ import { SetupFlow } from '@/components/infrastructure/SetupFlow';
 import { ControlPanel } from '@/components/pipeline/ControlPanel';
 import { MilestoneDetail } from '@/components/pipeline/MilestoneDetail';
 import { MilestoneTimeline } from '@/components/pipeline/MilestoneTimeline';
+import { TestAnalytics } from '@/components/pipeline/TestAnalytics';
 import { TokenDashboard } from '@/components/pipeline/TokenDashboard';
-import { Badge } from '@/components/shared/Badge';
 import { Card } from '@/components/shared/Card';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAppStore } from '@/store/appStore';
@@ -283,36 +283,7 @@ export function DashboardPage() {
         )}
 
         {activeTab === 'tests' && (
-          <Card title="Test Results">
-            <div className="space-y-4">
-              {pipelineState?.test_results?.length ? (
-                pipelineState.test_results.map((result, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between p-3 bg-bg-tertiary rounded-lg"
-                  >
-                    <div>
-                      <p className="font-medium">{result.name}</p>
-                      <p className="text-xs text-text-muted">
-                        {result.duration}s &bull; {result.milestone}
-                      </p>
-                    </div>
-                    <Badge
-                      variant={result.passed ? 'success' : 'error'}
-                    >
-                      {result.passed ? 'Passed' : 'Failed'}
-                    </Badge>
-                  </div>
-                ))
-              ) : (
-                <EmptyState
-                  icon={BeakerIcon}
-                  title="No Test Results"
-                  description="Test results will appear here after QA phases complete."
-                />
-              )}
-            </div>
-          </Card>
+          <TestAnalytics projectId={activeProject.id} />
         )}
         </motion.div>
       </AnimatePresence>

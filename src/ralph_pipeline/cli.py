@@ -404,7 +404,7 @@ def _handle_resume(
             plogger.warning(
                 f"Expected to be on branch {expected_prefix}* but on {current_branch}"
             )
-    elif current_ms.phase in ("reconciliation", "merge_verify"):
+    elif current_ms.phase == "reconciliation":
         # Should be on base branch
         if current_branch != state.base_branch:
             plogger.warning(
@@ -526,9 +526,4 @@ def main() -> None:
         validate_infra(args)
     else:
         parser.print_help()
-        sys.exit(0)
-        sys.exit(0)
-        sys.exit(0)
-        sys.exit(0)
-        sys.exit(0)
         sys.exit(0)

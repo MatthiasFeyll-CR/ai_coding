@@ -105,14 +105,14 @@ Without domain context, Claude can only fix **syntactic errors**. For **semantic
 |------|------|
 | `src/ralph_pipeline/ai/prompts.py` | `test_fix_prompt()`, `regression_fix_prompt()`, `gate_fix_prompt()` |
 | `src/ralph_pipeline/infra/test_runner.py` | Invokes fix prompts during test fix cycles |
-| `src/ralph_pipeline/phases/merge_verify.py` | Invokes gate fix prompts; orchestrates fix cycles |
+| `src/ralph_pipeline/phases/qa_review.py` | Orchestrates gate checks and bugfix cycles |
 | `src/ralph_pipeline/infra/regression.py` | Builds regression context for `regression_fix_prompt` |
 
 ### Fix cycle invocation in test_runner.py
 
 The test runner calls claude with the fix prompt. Check this file to see how the prompt is assembled and what data flows into it.
 
-### Fix cycle invocation in merge_verify.py
+> **Note:** `merge_verify.py` was removed — gate checks are now executed by `_run_gate_checks()` in `qa_review.py` during Phase 3.
 
 ```python
 prompt = gate_fix_prompt(

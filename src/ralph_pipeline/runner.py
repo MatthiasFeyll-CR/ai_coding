@@ -19,7 +19,11 @@ from ralph_pipeline.log import PipelineLogger
 from ralph_pipeline.phases.prd_generation import run_prd_generation
 from ralph_pipeline.phases.qa_review import run_qa_review
 from ralph_pipeline.phases.ralph_execution import run_ralph_execution
-from ralph_pipeline.phases.reconciliation import MergeError, run_reconciliation
+from ralph_pipeline.phases.reconciliation import (
+    MergeError,
+    ReconciliationScopeViolation,
+    run_reconciliation,
+)
 from ralph_pipeline.state import PipelineState
 from ralph_pipeline.usage import EventLogger
 
@@ -71,12 +75,6 @@ class MilestoneRunner:
             "source": "qa_review",
             "dest": "reconciliation",
             "after": "_on_phase_start",
-        },
-        {
-            "trigger": "qa_needs_fix",
-            "source": "qa_review",
-            "dest": "ralph_execution",
-            "after": "_on_bugfix",
         },
         {
             "trigger": "reconciled",
@@ -135,13 +133,6 @@ class MilestoneRunner:
     def _on_phase_start(self) -> None:
         """Called after each state transition — persist new state for resume."""
         self.plogger.info(f"M{self.milestone.id}: transitioning to next phase")
-        self._persist_state()
-
-    def _on_bugfix(self) -> None:
-        """Increment bugfix cycle counter."""
-        ms = self.pipeline_state.milestones[self.milestone.id]
-        ms.bugfix_cycle += 1
-        self.plogger.info(f"M{self.milestone.id}: QA bugfix cycle {ms.bugfix_cycle}")
         self._persist_state()
 
     def _on_complete(self) -> None:
@@ -254,6 +245,7 @@ class MilestoneRunner:
             plogger=self.plogger,
             project_root=self.project_root,
             event_logger=self.event_logger,
+            regression_analyzer=self.regression_analyzer,
         )
         self.event_logger.emit(
             "phase_end",
@@ -287,6 +279,19 @@ class MilestoneRunner:
             )
         except MergeError as e:
             self._failure_reason = str(e)
+            self.event_logger.emit(
+                "phase_end",
+                milestone=self.milestone.id,
+                data={"phase": "reconciliation", "error": str(e)},
+            )
+            self.fail()
+            return
+        except ReconciliationScopeViolation as e:
+            self._failure_reason = str(e)
+            self.plogger.error(
+                f"FATAL: Reconciliation scope violation for M{self.milestone.id}. "
+                f"Non-docs files were modified and have been reverted."
+            )
             self.event_logger.emit(
                 "phase_end",
                 milestone=self.milestone.id,

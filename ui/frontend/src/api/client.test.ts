@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock axios
 vi.mock('axios', () => {
-  const mockAxios = {
-    create: vi.fn(() => mockAxios),
+  const mockAxios: Record<string, any> = {
+    create: vi.fn((): Record<string, any> => mockAxios),
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
