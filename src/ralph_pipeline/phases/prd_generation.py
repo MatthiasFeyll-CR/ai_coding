@@ -10,7 +10,15 @@ from pathlib import Path
 from ralph_pipeline.ai.claude import ClaudeError, ClaudeRunner
 from ralph_pipeline.ai.prompts import prd_generation_prompt
 from ralph_pipeline.config import MilestoneConfig, PipelineConfig
+from ralph_pipeline.context_validator import (
+    ContextOverflowError,
+    validate_context_bundle,
+)
 from ralph_pipeline.log import PipelineLogger
+from ralph_pipeline.milestone_schema import (
+    MilestoneScopeValidationError,
+    validate_milestone_scope,
+)
 from ralph_pipeline.subprocess_utils import is_dry_run
 
 
@@ -68,6 +76,9 @@ def run_prd_generation(
 
     milestone_doc = str(milestones_dir / f"milestone-{milestone.id}.md")
 
+    # Structured scope file path for context-weight warnings
+    scope_path = milestones_dir / f"milestone-{milestone.id}.json"
+
     prompt = prd_generation_prompt(
         skill_content=skill_content,
         milestone_id=milestone.id,
@@ -118,5 +129,62 @@ def run_prd_generation(
             f"PRD Writer did not produce context bundle at {context_bundle}"
         )
         plogger.warning("Ralph will fall back to reading upstream docs directly.")
+    else:
+        # ── Context bundle size validation ────────────────────────────
+        try:
+            result = validate_context_bundle(
+                context_bundle,
+                config.context_limits,
+                already_truncated=False,
+            )
+            if result.status == "warned":
+                plogger.warning(result.message)
+            elif result.status == "truncated":
+                plogger.warning(result.message)
+            else:
+                plogger.info(result.message)
+        except ContextOverflowError as e:
+            raise PhaseError(str(e)) from e
+
+    # ── Surface milestone-scope context-weight warnings ───────────────
+    if scope_path.exists():
+        try:
+            scope = validate_milestone_scope(scope_path)
+            cw = scope.context_weight
+            warnings: list[str] = []
+            if cw.unique_file_paths > 30:
+                warnings.append(
+                    f"context_weight.unique_file_paths={cw.unique_file_paths} (>30)"
+                )
+            if cw.doc_sections > 5:
+                warnings.append(f"context_weight.doc_sections={cw.doc_sections} (>5)")
+            if cw.estimated_stories > 10:
+                warnings.append(
+                    f"context_weight.estimated_stories={cw.estimated_stories} (>10)"
+                )
+            if warnings:
+                plogger.warning(
+                    f"M{milestone.id} scope weight thresholds exceeded: "
+                    + "; ".join(warnings)
+                )
+        except MilestoneScopeValidationError:
+            pass  # Already raised earlier if fatal
+
+    # ── Check for domain-split recommendation ─────────────────────────
+    domain_split = scripts_dir / f"domain-split-m{milestone.id}.md"
+    if domain_split.exists():
+        split_preview = domain_split.read_text()[:500]
+        plogger.warning(
+            f"PRD Writer detected multi-domain milestone M{milestone.id}. "
+            f"Domain split recommendation saved to {domain_split}"
+        )
+        plogger.warning(
+            "Pipeline pausing — re-run the Strategy Planner to split this "
+            "milestone, then restart the pipeline."
+        )
+        raise PhaseError(
+            f"M{milestone.id} requires domain split before execution. "
+            f"See {domain_split} for details.\n\n{split_preview}"
+        )
 
     plogger.success(f"PRD for M{milestone.id} generated successfully")

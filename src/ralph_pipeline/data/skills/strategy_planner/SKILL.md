@@ -366,6 +366,7 @@ Context weight check:
 5. **Cross-reference everything.** Feature IDs, tables, endpoints, pages, components.
 6. **MVP first.** Clearly mark the boundary.
 7. **Confirm with user.** Get approval on the strategy before writing scope files.
-8. **Domain cohesion.** Group related features into the same milestone so the coding agent gets focused context.
+8. **Domain cohesion.** Group related features into the same milestone so the coding agent gets focused context. Aim for **one domain per milestone**. If a milestone spans two unrelated domains (e.g., user management and notifications with no shared tables/endpoints), split it. The PRD Writer will detect multi-domain milestones at execution time and produce a `.ralph/domain-split-m[N].md` file that pauses the pipeline — avoid this by splitting proactively during planning.
 9. **AI features are first-class.** If AI exists, plan AI infrastructure early and agent implementations at the right dependency level.
 10. **Structured handover.** Always produce the JSON handover for the Pipeline Configurator — it needs the strategy data to generate the pipeline config.
+11. **Domain split re-planning.** If invoked with a domain split recommendation file (`.ralph/domain-split-m[N].md` produced by the PRD Writer), read it and re-plan the specified milestone according to its recommendations. Preserve downstream milestone dependencies and re-number affected milestones. The split file contains a coupling analysis — use it to determine the dependency direction between sub-milestones.

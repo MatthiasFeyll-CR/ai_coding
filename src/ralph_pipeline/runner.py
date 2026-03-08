@@ -16,7 +16,8 @@ from ralph_pipeline.infra.regression import RegressionAnalyzer
 from ralph_pipeline.infra.test_infra import TestInfraManager
 from ralph_pipeline.infra.test_runner import TestRunner
 from ralph_pipeline.log import PipelineLogger
-from ralph_pipeline.phases.merge_verify import MergeVerifyError, run_merge_verify
+from ralph_pipeline.phases.merge_verify import (MergeVerifyError,
+                                                run_merge_verify)
 from ralph_pipeline.phases.prd_generation import run_prd_generation
 from ralph_pipeline.phases.qa_review import run_qa_review
 from ralph_pipeline.phases.ralph_execution import run_ralph_execution
@@ -322,4 +323,7 @@ class MilestoneRunner:
             "phase_end", milestone=self.milestone.id, data={"phase": "reconciliation"}
         )
         self.reconciled()
-        self.reconciled()
+
+
+
+

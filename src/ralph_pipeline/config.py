@@ -200,6 +200,25 @@ class AIEnvConfig(BaseModel):
     required_keys: list[str] = ["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY"]
 
 
+class ContextLimitsConfig(BaseModel):
+    """Context bundle size limits for execution-time validation.
+
+    The context bundle (.ralph/context.md) grows with each milestone as the
+    codebase expands.  These limits prevent silent context-window overflow
+    that degrades Ralph's code quality.
+
+    Behaviour:
+      - At ``warn_pct`` % of ``max_lines`` / ``max_tokens``: log a warning.
+      - At 100 %: auto-truncate the bundle (once per milestone).
+      - On a *second* exceed in the same milestone iteration: abort.
+    """
+
+    max_lines: int = 3000
+    max_tokens: int = 15000
+    warn_pct: float = 80.0  # warn at this % of the limit
+    tokens_per_line: float = 4.5  # heuristic multiplier
+
+
 class RetryConfig(BaseModel):
     max_retries: int = 3
     backoff_seconds: int = 30
@@ -229,6 +248,7 @@ class PipelineConfig(BaseModel):
     scaffolding: Optional[ScaffoldingConfig] = None
     retry: RetryConfig = RetryConfig()
     cost: CostConfig = CostConfig()
+    context_limits: ContextLimitsConfig = ContextLimitsConfig()
 
     @field_validator("milestones")
     @classmethod

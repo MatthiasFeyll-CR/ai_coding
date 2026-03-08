@@ -95,6 +95,32 @@ Include the **AI** line only for stories that implement or interact with AI agen
 Include the **Runtime Safety** line only for stories that involve loops, state machines, async operations, or resource management.
 Omit any section with no content.
 
+### Inline Story Context (per-story references in prd.json)
+
+In addition to the notes field, each story **must** include a `context` object that embeds the specific upstream references Ralph needs for that story. This ensures Ralph has per-story context directly in the PRD without relying solely on context.md (which is shared across all stories and may be truncated for large milestones).
+
+The `context` object structure:
+
+```json
+{
+  "context": {
+    "data_model": ["Table definitions verbatim from data-model.md for tables this story touches"],
+    "api_endpoints": ["Endpoint specs verbatim from api-design.md for endpoints this story implements"],
+    "components": ["Component specs verbatim from component-specs.md for components this story builds"],
+    "test_cases": ["Full test case definitions from test-matrix.md for test IDs assigned to this story"],
+    "ai_specs": ["System prompts, tool schemas, model config for AI features in this story"],
+    "existing_code": ["Key snippets from existing files this story modifies (max 50 lines per file)"]
+  }
+}
+```
+
+**Rules for inline context:**
+1. **Verbatim extraction** — copy the exact text from upstream docs, do not summarise.
+2. **Only what this story needs** — do not duplicate the entire context bundle.
+3. **Existing code is selective** — include only the functions/classes/sections the story will modify, not entire files.
+4. **Omit empty keys** — if a story has no AI specs, omit `ai_specs` entirely.
+5. **This is the safety net** — if context.md gets truncated by the pipeline validator, Ralph still has per-story context in the PRD.
+
 ---
 
 ## 6. Cross-Reference Validation
@@ -135,7 +161,14 @@ Produce `tasks/prd-mN.json` directly from the milestone scope file and upstream 
       ],
       "priority": 1,
       "passes": false,
-      "notes": "Architecture: docs/02-architecture/[file] § [section] — [ref]\nDesign: docs/03-design/[file] § [section] — [ref]\nTesting: docs/04-test-architecture/test-matrix.md § [Test IDs]\nFiles: [expected file paths]\nGotchas: [pitfalls]"
+      "notes": "Architecture: docs/02-architecture/[file] § [section] — [ref]\nDesign: docs/03-design/[file] § [section] — [ref]\nTesting: docs/04-test-architecture/test-matrix.md § [Test IDs]\nFiles: [expected file paths]\nGotchas: [pitfalls]",
+      "context": {
+        "data_model": ["CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR NOT NULL UNIQUE, ...)"],
+        "api_endpoints": ["POST /api/users — Creates a new user. Request body: {email, password}. Response: 201 {id, email}"],
+        "test_cases": ["T-1.1.01 | Unit | Create user with valid data | {email, password} | User record created, 201 returned"],
+        "components": [],
+        "existing_code": []
+      }
     }
   ]
 }
@@ -296,6 +329,24 @@ Before your first quality check in this milestone, ensure test infrastructure is
 7. **Cross-boundary dependencies.** When extracting a section that has dependencies on other sections (foreign keys, imported types, shared interfaces), follow the dependency chain and include those referenced sections — even if they were defined in a different milestone's scope. Ralph cannot implement a feature correctly if it can only see half of a relationship.
 8. **Quality checks from config — not from docs.** The quality check commands in context.md must come from `pipeline-config.json` (the concrete commands Phase 0 generated), NOT from upstream specification docs. Upstream docs describe intent; the config contains verified, runnable commands.
 
+### Section Priority (for truncation)
+
+The pipeline validates context.md after you generate it. If the bundle exceeds the configured `context_limits.max_lines` / `context_limits.max_tokens`, the pipeline will auto-truncate sections starting from the **lowest priority**. Knowing this, structure your bundle so the most critical sections appear earliest and are most complete.
+
+**Priority order (highest = never truncated → lowest = truncated first):**
+
+1. **Quality Checks** — the concrete commands Ralph must run. Never truncated.
+2. **Test Infrastructure Setup** — service startup commands. Never truncated.
+3. **Test Specifications** — full test case definitions (Ralph writes tests first).
+4. **Architecture Reference** — data model, API endpoints, project structure.
+5. **Design Reference** — component specs, wireframes.
+6. **AI Reference** — system prompts, tool schemas.
+7. **Browser Testing** — conditional browser instructions.
+8. **Codebase Patterns** — bullet list from previous milestones (truncated to top 10).
+9. **Codebase Snapshot** — file tree + contents (truncated to tree-only, contents omitted).
+
+**Why this matters:** When the pipeline truncates, it removes file contents from the Codebase Snapshot first and summarises Codebase Patterns. Because you also embed per-story references directly in `prd.json` (see Section 5 "Inline Story Context"), Ralph still has access to the most critical details even if context.md is truncated.
+
 ### Context Weight Reporting
 
 After generating the bundle, report the **context weight** to the pipeline:
@@ -308,6 +359,90 @@ Context weight for M[N]:
 ```
 
 If the bundle exceeds ~1500 lines, warn: "Context bundle is large. Consider splitting this milestone."
+
+Note: The pipeline performs its own size validation after you finish. It reads `context_limits` from `pipeline-config.json` (defaults: 3000 lines / 15000 tokens). At 80% it logs a warning; at 100% it auto-truncates low-priority sections (once per milestone). If the bundle still exceeds limits after truncation the pipeline aborts. Your 1500-line warning is an early signal; the pipeline enforces the hard limit.
+
+---
+
+## 8b. Multi-Domain Detection
+
+While assembling the PRD and context bundle, assess whether the milestone's stories span **multiple independent domains** that could be executed as separate milestones.
+
+### What counts as separate domains
+
+- Stories that touch entirely different database tables with no foreign-key relationships between them
+- Stories that touch different API endpoint groups with no shared middleware or types
+- Frontend stories for unrelated pages with no shared component dependencies
+- Backend-only vs frontend-only story groups with a clean interface boundary
+
+### What does NOT count
+
+- Stories that share the same table via foreign keys (these are coupled)
+- A schema story and the API story that serves that schema (dependency chain)
+- A component story and the page story that uses that component
+
+### When to flag
+
+If you identify **2 or more domains** where:
+1. No story in domain A depends on any story in domain B (no shared tables, endpoints, components, or types)
+2. Splitting would result in each sub-milestone having ≥2 stories
+3. The combined context weight exceeds ~1500 lines or the milestone has >8 stories
+
+Then produce a **domain split recommendation file** at `.ralph/domain-split-m[N].md`:
+
+```markdown
+# Domain Split Recommendation: M[N] — [Milestone Name]
+
+> Auto-generated by PRD Writer. This file signals the pipeline to pause and
+> request a Strategy Planner re-plan.
+
+## Detected Domains
+
+### Domain A: [Name]
+- Features: [F-x.x, ...]
+- Stories: [US-001, US-002, ...]
+- Tables: [table1, table2]
+- Endpoints: [/api/x, /api/y]
+- Estimated context weight: [lines] lines
+
+### Domain B: [Name]
+- Features: [F-y.y, ...]
+- Stories: [US-005, US-006, ...]
+- Tables: [table3, table4]
+- Endpoints: [/api/z]
+- Estimated context weight: [lines] lines
+
+## Coupling Analysis
+
+- Domain A → Domain B: [None / describe any coupling]
+- Domain B → Domain A: [None / describe any coupling]
+
+## Recommendation
+
+Split M[N] into:
+- M[N]a: [Domain A Name] ([count] stories, ~[lines] context lines)
+- M[N]b: [Domain B Name] ([count] stories, ~[lines] context lines)
+- Dependency: [M[N]b depends on M[N]a / independent]
+
+## Handover Prompt for Strategy Planner
+
+The PRD Writer detected that milestone M[N] spans multiple independent domains.
+Please re-plan by splitting this milestone according to the recommendation above.
+Re-run the Strategy Planner with:
+- The original milestone scope for M[N]
+- This domain split recommendation
+- Preserve downstream milestone dependencies
+```
+
+### Pipeline behaviour
+
+When the pipeline detects `.ralph/domain-split-m[N].md` after PRD generation, it:
+1. Logs a warning with the split recommendation summary
+2. Pauses automated execution
+3. Instructs the user to re-run the Strategy Planner to split the milestone
+4. Does NOT proceed to Ralph execution for this milestone
+
+This interruption should be rare — the Strategy Planner already validates context weight and aims for one domain per milestone.
 
 ---
 
@@ -328,6 +463,7 @@ This feeds into the Spec Reconciler after each milestone.
 After producing `tasks/prd-mN.json` and `.ralph/context.md`:
 
 1. Inform the user that the JSON PRD and context bundle are ready.
-2. Report: milestone name, story count, context weight, any size warnings, any deviation flags.
-3. The PRD is now ready for Ralph execution (handled automatically by the pipeline).
-4. If writing PRDs for multiple milestones in batch: proceed to the next milestone scope file and repeat the process.
+2. Report: milestone name, story count, context weight, any size warnings, any deviation flags, **any domain split recommendation**.
+3. If a domain split recommendation was generated (`.ralph/domain-split-m[N].md`), inform the user that the pipeline will pause for Strategy Planner re-planning.
+4. The PRD is now ready for Ralph execution (handled automatically by the pipeline).
+5. If writing PRDs for multiple milestones in batch: proceed to the next milestone scope file and repeat the process.
