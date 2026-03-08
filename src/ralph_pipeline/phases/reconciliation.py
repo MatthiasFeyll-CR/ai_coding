@@ -21,6 +21,8 @@ from ralph_pipeline.config import MilestoneConfig, PipelineConfig
 from ralph_pipeline.git_ops import GitOps, MergeConflictError
 from ralph_pipeline.infra.regression import RegressionAnalyzer
 from ralph_pipeline.log import PipelineLogger
+from ralph_pipeline.phases.deterministic_recon import \
+    run_deterministic_reconciliation
 from ralph_pipeline.state import PipelineState
 from ralph_pipeline.subprocess_utils import is_dry_run
 
@@ -103,10 +105,13 @@ def _run_spec_reconciliation(
     git: GitOps,
     plogger: PipelineLogger,
     project_root: Path,
-) -> None:
+) -> bool:
     """Invoke the Spec Reconciler agent — 2 attempts, non-fatal.
 
     Updates upstream docs to match actual implementation.
+
+    Returns True if reconciliation succeeded (changelog produced),
+    False otherwise.
     """
     slug = milestone.slug
 
@@ -116,6 +121,16 @@ def _run_spec_reconciliation(
     recon_dir = project_root / config.paths.reconciliation_dir
 
     recon_dir.mkdir(parents=True, exist_ok=True)
+
+    # Step 2a: Deterministic reconciliation — catches structural drift
+    # without relying on AI (file paths, directories referenced in docs).
+    run_deterministic_reconciliation(
+        project_root=project_root,
+        docs_dir=config.paths.docs_dir,
+        recon_dir=recon_dir,
+        milestone_id=milestone.id,
+        plogger=plogger,
+    )
 
     log_dir = project_root / ".ralph" / "logs" / f"m{milestone.id}-{slug}"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -156,7 +171,7 @@ def _run_spec_reconciliation(
             plogger.success(
                 f"Reconciliation complete for M{milestone.id} (changelog: {changelog})"
             )
-            return
+            return True
 
         if attempt == 1:
             plogger.info("Changelog not produced — retrying reconciliation (attempt 2)")
@@ -165,6 +180,7 @@ def _run_spec_reconciliation(
         f"Spec Reconciler did not produce {changelog} after 2 attempts — continuing.\n"
         f"Future milestone PRDs may reference stale specs. Consider running /spec_reconciler manually."
     )
+    return False
 
 
 def run_reconciliation(
@@ -177,7 +193,7 @@ def run_reconciliation(
     plogger: PipelineLogger,
     project_root: Path,
     state_file: Path | None = None,
-) -> None:
+) -> bool:
     """Merge feature branch and reconcile specs.
 
     Two-step phase:
@@ -185,7 +201,10 @@ def run_reconciliation(
       2. Run the Spec Reconciler to update upstream docs
 
     Raises MergeError if the merge itself fails (should not happen in
-    normal operation).  Spec reconciliation failures are non-fatal.
+    normal operation).  Spec reconciliation failures are non-fatal but
+    tracked via return value.
+
+    Returns True if reconciliation succeeded, False if it failed.
     """
     slug = milestone.slug
 
@@ -197,7 +216,7 @@ def run_reconciliation(
         plogger.info(
             f"[DRY RUN] Would merge and reconcile M{milestone.id}"
         )
-        return
+        return True
 
     # Step 1: Merge feature branch
     _merge_feature_branch(
@@ -212,7 +231,7 @@ def run_reconciliation(
     )
 
     # Step 2: Spec reconciliation (non-fatal)
-    _run_spec_reconciliation(
+    return _run_spec_reconciliation(
         milestone=milestone,
         config=config,
         claude=claude,

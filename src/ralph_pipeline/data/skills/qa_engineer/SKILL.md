@@ -96,10 +96,11 @@ For each completed milestone, execute these phases **in order**. Each phase has 
 **Goal:** Verify that all tests specified in the test matrix for this milestone were actually implemented by Ralph.
 
 **Process:**
-1. The pipeline provides a `TEST MATRIX COVERAGE` section in your prompt with automated scan results (FOUND/MISSING per test ID). This is your primary evidence.
-2. For each MISSING test ID: confirm it is genuinely missing by searching the codebase yourself. If you find it under a different name or in an unexpected location, note it as FOUND with a comment.
+1. The pipeline provides a `TEST MATRIX COVERAGE` section in your prompt with automated scan results (FOUND/MISSING per test ID). The pipeline uses three search methods: (a) `.ralph/test-manifest.json` lookup, (b) AST-based Python test search, and (c) grep heuristic. This is your primary evidence.
+2. For each MISSING test ID: confirm it is genuinely missing by searching the codebase yourself. If you find it under a different name or in an unexpected location, note it as FOUND with a comment. Also check whether Ralph registered it in `.ralph/test-manifest.json` — if not, add it to the manifest as part of your QA fix.
 3. For each FOUND test ID: spot-check that the test actually verifies what the test matrix specifies (not just a stub or trivially-passing test).
 4. Every genuinely missing test is a DEFECT (DEF-XXX).
+5. If `.ralph/test-manifest.json` is missing or incomplete, note it as a non-blocking finding — Ralph should maintain this file for pipeline automation.
 
 **Output section:** Test Matrix Coverage table in the QA report.
 

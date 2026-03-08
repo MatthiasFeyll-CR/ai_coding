@@ -1,117 +1,58 @@
-# Pipeline Workflow — Global Overview
+# Pipeline Workflow — End-to-End
+
+The pipeline operates in four macro-phases. The specification and planning phases are driven manually by invoking Claude skills. The execution phase runs autonomously via `ralph-pipeline run`. The release phase is manual post-completion.
+
+## Specification Phase (Manual)
+
+Each skill produces a `handover.json` consumed by the next:
+
+1. **Requirements Engineering** → `docs/01-requirements/` — 8-phase structured elicitation
+2. **Software Architect** → `docs/02-architecture/` — Tech stack, data model, API, project structure, testing
+3. **UI/UX Designer** → `docs/03-design/` — Design system, wireframes, components *(parallel with 3b)*
+4. **AI Engineer** → `docs/03-ai/` — Agent architecture, prompts, tool schemas *(parallel with 3a)*
+5. **Arch+AI Integrator** → `docs/03-integration/` — Reconciles architecture + AI docs
+6. **Spec QA** → `docs/04-spec-qa/` — Quality gate: PASS / CONDITIONAL / FAIL
+7. **Test Architect** → `docs/04-test-architecture/` — Test plan, matrix, fixtures, integration scenarios
+
+## Planning Phase (Manual)
+
+1. **Strategy Planner** → `docs/05-milestones/` — Milestone scope files with context-weight validation
+2. **Pipeline Configurator** → `pipeline-config.json` + `.ralph/CLAUDE.md` — Machine-readable config with declarative infrastructure specs
+
+## Execution Phase (Automated)
 
 ```
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │                        SPECIFICATION PHASE                          │
-  │                 (Manual — user invokes each skill)                  │
-  ├─────────────────────────────────────────────────────────────────────┤
-  │                                                                     │
-  │  [1] Requirements Engineer        /requirements_engineering         │
-  │      docs/01-requirements/                                          │
-  │      8-phase elicitation → handover.json                            │
-  │                          │                                          │
-  │                          ▼                                          │
-  │  [2] Software Architect           /software_architect               │
-  │      docs/02-architecture/                                          │
-  │      Tech stack → data model → API → project structure → tests      │
-  │                          │                                          │
-  │              ┌───────────┼───────────┐                              │
-  │              ▼                       ▼                              │
-  │  [3a] UI/UX Designer     [3b] AI Engineer        (parallel)         │
-  │       /ui_ux_designer          /ai_engineer                         │
-  │       docs/03-design/          docs/03-ai/                          │
-  │              │                       │                              │
-  │              └───────────┬───────────┘                              │
-  │                          ▼                                          │
-  │  [3c] Arch+AI Integrator         /arch_ai_integrator                │
-  │       docs/03-integration/                                          │
-  │                          │                                          │
-  │                          ▼                                          │
-  │  [4] Spec QA                         /spec_qa                       │
-  │      docs/04-spec-qa/                                               │
-  │      Verdict: PASS / CONDITIONAL PASS / FAIL                        │
-  │                          │                                          │
-  │                          ▼                                          │
-  │  [4b] Test Architect                /test_architect                 │
-  │       docs/04-test-architecture/                                    │
-  │       Test plan → test matrix → fixtures → integration → runtime    │
-  │                                                                     │
-  └─────────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │                         PLANNING PHASE                              │
-  │               (Manual — user invokes each skill)                    │
-  ├─────────────────────────────────────────────────────────────────────┤
-  │                                                                     │
-  │  [5] Strategy Planner               /strategy_planner               │
-  │      docs/05-milestones/                                            │
-  │      Dependency analysis → milestone scope files → handoff          │
-  │                          │                                          │
-  │                          ▼                                          │
-  │  [6] Pipeline Configurator          /pipeline_configurator          │
-  │      pipeline-config.json + .ralph/CLAUDE.md                        │
-  │      Translates strategy into machine-readable config with          │
-  │      declarative test_infrastructure + scaffolding specs            │
-  │                                                                     │
-  └─────────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │                        EXECUTION PHASE                              │
-  │            (Automated — ralph-pipeline orchestrates)                │
-  ├─────────────────────────────────────────────────────────────────────┤
-  │                                                                     │
-  │  ralph-pipeline run --config pipeline-config.json                   │
-  │                                                                     │
-  │  Phase 0: Infrastructure Bootstrap (runs once, before milestones)   │
-  │  Creates project scaffolding + test infrastructure from             │
-  │  declarative specs in pipeline-config.json. Generates               │
-  │  docker-compose.test.yml, Dockerfiles, project directories,         │
-  │  framework boilerplate. Writes concrete test_execution commands     │
-  │  back into the config.                                              │
-  │                                                                     │
-│  Iterates through milestones sequentially, each runs 4 phases:      │
-│  PRD + Context Bundle → Ralph Coding → QA Review →                  │
-│  Merge+Reconcile                                                    │
-  │                                                                     │
-  │  Skills invoked: /prd_writer, /qa_engineer, /spec_reconciler        │
-  │  State persisted at .ralph/state.json after each phase transition   │
-  │                                                                     │
-  │  See: docs/diagrams/execution-phase.md for detailed breakdown       │
-  │                                                                     │
-  └─────────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │                       RELEASE PHASE                                 │
-  ├─────────────────────────────────────────────────────────────────────┤
-  │                                                                     │
-  │  [8] Release Engineer                /release_engineer              │
-  │      docs/09-release/                                               │
-  │      (after all milestones complete)                                │
-  │                                                                     │
-  └─────────────────────────────────────────────────────────────────────┘
+ralph-pipeline run --config pipeline-config.json
 
-    Utilities:  /pipeline_dashboard — unified status overview at any time
+Phase 0: Bootstrap (once)
+  Scaffolding → Test infra → Lifecycle verification → Config write-back
 
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │                        HANDOVER FLOW                                │
-  ├─────────────────────────────────────────────────────────────────────┤
-  │                                                                     │
-  │  Every step produces a JSON handover file with:                     │
-  │  - from/to fields, files_produced list, next_commands               │
-  │                                                                     │
-  │  docs/01-requirements/handover.json                                 │
-  │    → docs/02-architecture/handover.json                             │
-  │      → docs/03-design/handover.json     (parallel)                  │
-  │      → docs/03-ai/handover.json         (parallel)                  │
-  │        → docs/03-integration/handover.json                          │
-  │          → docs/04-spec-qa/handover.json                            │
-  │            → docs/04-test-architecture/handover.json                │
-  │              → docs/05-milestones/handover.json                     │
-  │                → .ralph/handover.json                               │
-  │                  → ralph-pipeline runs autonomously                 │
-  │                                                                     │
-  └─────────────────────────────────────────────────────────────────────┘
+For each milestone (sequential):
+  Phase 1: PRD Generation + Context Bundle
+  Phase 2: Ralph Coding Loop (iterative Claude sessions)
+  Phase 3: QA Review + Bugfix Cycles (up to max_bugfix_cycles)
+  Phase 4: Merge + Test Ownership + Spec Reconciliation
+
+State saved after every phase transition → resumable from any point
+```
+
+## Release Phase (Manual)
+
+**Release Engineer** → `docs/09-release/` — Deployment documentation after all milestones complete.
+
+**Pipeline Dashboard** — Utility skill for status overview at any time.
+
+## Handover Chain
+
+```
+docs/01-requirements/handover.json
+  → docs/02-architecture/handover.json
+    → docs/03-design/handover.json     (parallel)
+    → docs/03-ai/handover.json         (parallel)
+      → docs/03-integration/handover.json
+        → docs/04-spec-qa/handover.json
+          → docs/04-test-architecture/handover.json
+            → docs/05-milestones/handover.json
+              → .ralph/handover.json
+                → ralph-pipeline runs autonomously
 ```

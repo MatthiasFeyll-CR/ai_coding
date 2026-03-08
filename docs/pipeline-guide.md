@@ -1,44 +1,46 @@
-# Ralph Pipeline — AI Agent Reference
+# Ralph Pipeline — Reference Guide
 
-## What Is This
+## Overview
 
-Ralph Pipeline is a Python CLI framework that orchestrates multi-milestone software projects using AI agents. It takes a project configuration, breaks work into milestones, and drives each milestone through a structured 5-phase lifecycle — from requirements generation to code implementation, quality assurance, integration, and spec reconciliation.
+Ralph Pipeline is a Python CLI framework that orchestrates multi-milestone software projects using Claude AI agents. It drives each milestone through a structured phase lifecycle — from PRD generation to code implementation, quality assurance, and spec reconciliation — fully autonomously.
 
-The pipeline manages git branches, test infrastructure, AI agent invocations (Claude), and state persistence. It is designed to run autonomously end-to-end, producing production-ready code for each milestone with full test coverage and gate checks.
+## Configuration
 
-## How It Works
-
-### Configuration
-
-Everything starts with `pipeline-config.json` at the project root:
+Everything starts with `pipeline-config.json`:
 
 ```json
 {
-  "project": { "name": "MyApp", "description": "Application description" },
+  "project": { "name": "MyApp", "description": "..." },
   "milestones": [
     { "id": 1, "slug": "foundation", "name": "Foundation", "stories": 3 },
-    { "id": 2, "slug": "core", "name": "Core Features", "stories": 5, "dependencies": [1] }
+    { "id": 2, "slug": "core", "name": "Core", "stories": 5, "dependencies": [1] }
   ],
+  "models": {
+    "ralph": "claude-sonnet",
+    "prd_generation": "claude-opus",
+    "qa_review": "claude-opus",
+    "reconciliation": "claude-sonnet"
+  },
   "test_execution": {
     "test_command": "npm test",
-    "services": [
-      { "name": "postgres", "type": "tcp", "host": "localhost", "port": 5432 }
-    ]
+    "services": [{ "name": "postgres", "type": "tcp", "host": "localhost", "port": 5432 }]
   },
   "gate_checks": {
     "checks": [
       { "name": "lint", "command": "npm run lint" },
       { "name": "typecheck", "command": "npm run typecheck" }
     ]
-  }
+  },
+  "cost": { "budget_usd": 50.0, "warn_at_pct": 80 },
+  "context_limits": { "max_lines": 3000, "max_tokens": 15000, "warn_pct": 80 }
 }
 ```
 
-The config defines milestones in execution order, with optional dependencies between them. Each milestone specifies a slug (used for branch naming) and number of user stories.
+Milestones are validated at load time: no missing dependencies, no circular dependencies, correct ordering.
 
-### The 4-Phase Lifecycle
+## Phase Lifecycle
 
-Every milestone passes through these phases sequentially, managed by a finite state machine:
+Every milestone passes through these phases, managed by a finite state machine (`transitions` library):
 
 ```
 pending → prd_generation → ralph_execution → qa_review → reconciliation → complete
@@ -46,130 +48,104 @@ pending → prd_generation → ralph_execution → qa_review → reconciliation 
                                 └── qa_needs_fix ┘
 ```
 
-**Phase 1 — PRD Generation**
-Generates a Product Requirements Document (`tasks/prd-mN.json`) and a context bundle (`.ralph/context.md`). The PRD contains structured stories with test specifications. Previous milestone archives inform codebase patterns.
+### Phase 0 — Infrastructure Bootstrap (runs once)
 
-**Phase 2 — Ralph Execution**
-Creates a feature branch (`ralph/mN-slug`), then runs the Ralph agent loop — an iterative Claude session that implements each story from the PRD. Ralph reads the PRD and context, writes code, and runs light tests after each iteration. The agent loops until it signals completion or hits the iteration limit.
+Converts declarative `test_infrastructure` and `scaffolding` specs into concrete infrastructure. Generates Docker Compose files, verifies the lifecycle (build → setup → health → smoke → teardown), and writes concrete `test_execution` commands back into the config. Consumed sections are removed after bootstrap.
 
-**Phase 3 — QA Review**
-Runs the full test suite, analyzes test coverage against the PRD's test matrix, and invokes a QA reviewer agent. The reviewer issues a PASS or FAIL verdict. On FAIL, the pipeline loops back to Phase 2 for a bugfix cycle (up to `qa.max_bugfix_cycles` times). On PASS, the milestone is archived and proceeds.
+### Phase 1 — PRD Generation
 
-**Phase 4 — Merge + Reconciliation**
-Merges the feature branch into the base branch (`--no-ff`), registers test ownership for regression tracking, tags `mN-complete`, and deletes the feature branch. Then invokes the Spec Reconciler agent to update project documentation to reflect what was actually built vs. what was planned. Since the pipeline uses a single linear coding agent, the merged code is identical to what QA validated — no post-merge verification is needed. Reconciliation failures are non-fatal.
+Invokes the PRD Writer skill to produce `tasks/prd-mN.json` and `.ralph/context.md`. The context bundle contains milestone-scoped architecture, design, test specs, codebase patterns from prior milestones, and a codebase snapshot. Context is validated against size limits (truncation by priority if exceeded).
 
-### Directory Structure
+### Phase 2 — Ralph Execution
 
-The pipeline uses `.ralph/` in the project root for all working state:
+Creates feature branch `ralph/mN-slug`, injects runtime footer (test commands, gate checks) into `CLAUDE.md`, then runs an iterative Claude coding loop. Iteration budget: `stories × max_iterations_multiplier`. Loops until `<promise>COMPLETE</promise>` signal or budget exhaustion. Light tests run post-completion (non-blocking).
+
+### Phase 3 — QA Review
+
+Runs full test suite (Tier 2), analyzes test coverage against PRD test IDs (3-tier extraction + 3-tier finding), invokes QA Engineer skill. On FAIL verdict, triggers bugfix cycle: refreshes context with current codebase snapshot + QA summary, re-runs Ralph in bugfix mode, then re-runs QA. Up to `max_bugfix_cycles` iterations. On exhaustion, writes escalation report.
+
+### Phase 4 — Merge + Reconciliation
+
+Merges feature branch into base (`--no-ff`), registers test ownership for regression tracking, tags `mN-complete`. Runs both deterministic drift detection (path references vs actual tree) and AI-powered spec reconciliation. Reconciliation failures are non-fatal (warn and continue).
+
+## Working Directory
 
 ```
 .ralph/
-├── state.json              # FSM state — current phase per milestone
-├── prd.json                # Active PRD for current milestone
+├── state.json              # FSM state, cost tracking, test ownership
+├── pipeline.lock           # PID-based lock preventing concurrent runs
+├── prd.json                # Symlink to active PRD
 ├── context.md              # Context bundle for current milestone
 ├── progress.txt            # Ralph agent progress tracking
-├── logs/
-│   └── pipeline.jsonl      # Structured event log (usage, phases, tests)
-└── archive/
-    └── <milestone-slug>/   # Archived PRDs and progress per completed milestone
-        ├── prd.json
-        └── progress.txt
+├── CLAUDE.md               # Agent instructions with runtime footer
+├── logs/pipeline.jsonl     # Structured event log
+├── .test-image-hashes      # Docker image rebuild tracking
+└── archive/<slug>/         # Archived PRDs + progress per completed milestone
 ```
-
-### State Persistence & Resume
-
-Pipeline state is persisted to `.ralph/state.json` after every phase transition. If the pipeline is interrupted (Ctrl+C, crash, timeout), it can be resumed:
-
-```bash
-ralph-pipeline run --config pipeline-config.json --resume
-```
-
-Resume skips completed milestones and restarts the current milestone from its last saved phase.
-
-### Test Infrastructure
-
-The pipeline manages two tiers of test infrastructure:
-
-- **Tier 2 (Simple):** Direct test commands (`test_command`), optional build step, service health checks via configured `services` array
-- **Tier 1 (Docker):** Docker Compose environments with image hash tracking, automatic rebuild detection, structured health check polling
-
-Services are verified via TCP connectivity checks with configurable timeouts before tests run.
-
-### Regression Analysis
-
-After merging a milestone, test ownership is recorded in `state.json` via `test_milestone_map`, built by scanning git history for when test files were first committed. This allows the QA phase of future milestones to classify failures as:
-- **REGRESSION:** A test owned by a previously-completed milestone now fails → high priority
-- **CURRENT:** A test introduced by the current milestone fails → normal fix cycle
 
 ## CLI Reference
 
 ```bash
-# Run full pipeline
-ralph-pipeline run --config pipeline-config.json
-
-# Dry run (no commands executed, traces full flow)
-ralph-pipeline run --config pipeline-config.json --dry-run
-
-# Resume interrupted pipeline
-ralph-pipeline run --config pipeline-config.json --resume
-
-# Start from specific milestone
-ralph-pipeline run --config pipeline-config.json --milestone 2
-
-# Install bundled skills to ~/.claude/skills/
-ralph-pipeline install-skills
-
-# Validate test infrastructure lifecycle
-ralph-pipeline validate-infra --config pipeline-config.json
+ralph-pipeline run --config pipeline-config.json              # Full run
+ralph-pipeline run --config pipeline-config.json --resume     # Resume from interruption
+ralph-pipeline run --config pipeline-config.json --milestone 2 # Start at milestone 2
+ralph-pipeline run --config pipeline-config.json --dry-run     # Trace without executing
+ralph-pipeline install-skills                                  # Install skills to ~/.claude/skills/
+ralph-pipeline validate-infra --config pipeline-config.json    # Validate test infra
 ```
 
 ## Technical Stack
 
-- **Python 3.11+** — pip-installable package
-- **Pydantic** — typed config validation with dependency graph checking
-- **transitions** — FSM library for milestone state management
-- **Rich** — structured terminal UI with status panels and formatted output
-- **Claude** — AI agent invocations via `claude --print` subprocess calls with retry and streaming
+| Component | Technology |
+|-----------|-----------|
+| Runtime | Python 3.11+ (pip package) |
+| Config | Pydantic 2.0+ (15+ typed models) |
+| State Machine | `transitions` 0.9+ |
+| Terminal UI | `rich` 13.0+ |
+| AI Agent | Claude CLI (`--print --output-format json`) |
+| VCS | Git (branch-per-milestone) |
+| Test Infra | Docker Compose (two-tier) |
 
 ## Key Modules
 
 | Module | Purpose |
-|---|---|
-| `config.py` | 15 Pydantic models defining the full configuration schema |
-| `state.py` | Pipeline state persistence — milestone phases, timestamps, test ownership |
-| `runner.py` | FSM driving one milestone through 4 phases with transition callbacks |
-| `cli.py` | CLI entry point — argument parsing, service initialization, signal handling |
-| `git_ops.py` | All git operations — branches, merges, tags, conflict detection |
-| `subprocess_utils.py` | Single choke point for all subprocess calls, dry-run mode |
-| `ai/claude.py` | Claude subprocess wrapper with retry, streaming, usage logging |
-| `ai/prompts.py` | All prompt templates as Python functions |
-| `infra/health.py` | TCP health checks for test dependency services |
-| `infra/test_infra.py` | Docker test infrastructure lifecycle management |
-| `infra/test_runner.py` | Test execution engine with AI-assisted fix cycles |
-| `infra/regression.py` | Test ownership tracking for regression classification |
-| `phases/*.py` | One module per pipeline phase with the core execution logic |
-| `data/ralph.sh` | The Ralph agent loop script (iterative Claude coding sessions) |
-| `data/skills/` | 14 bundled Claude skills for each pipeline role |
+|--------|---------|
+| `cli.py` | Entry point, orchestration, signal handling |
+| `config.py` | Pydantic configuration schema (15+ models) |
+| `state.py` | Pipeline state persistence + cost tracking |
+| `runner.py` | FSM milestone runner with `transitions` |
+| `git_ops.py` | Git operations (branches, merges, tags) |
+| `ai/claude.py` | Claude subprocess wrapper with retry + cost tracking |
+| `ai/prompts.py` | 10 prompt templates as Python functions |
+| `ai/env.py` | `.ai.env` credential loading + validation |
+| `infra/health.py` | TCP health checks for services |
+| `infra/test_infra.py` | Docker container lifecycle (hash-based rebuild) |
+| `infra/test_runner.py` | Test execution + AI fix cycles |
+| `infra/regression.py` | Test ownership + regression classification |
+| `phases/phase0_bootstrap.py` | Infrastructure bootstrap |
+| `phases/prd_generation.py` | PRD + context bundle generation |
+| `phases/ralph_execution.py` | Iterative Ralph coding loop |
+| `phases/qa_review.py` | QA review + bugfix cycles |
+| `phases/reconciliation.py` | Merge + spec reconciliation |
+| `phases/deterministic_recon.py` | Structural drift detection |
 
 ## Skills
 
-The pipeline bundles 14 specialized Claude skills, each defining a role in the development workflow:
+14 bundled Claude skills, installed via `ralph-pipeline install-skills`:
 
-| Skill | Role |
-|---|---|
-| `requirements_engineering` | Elicits and structures project requirements |
-| `software_architect` | Designs system architecture from requirements |
-| `ai_engineer` | Designs AI/ML integration patterns |
-| `arch_ai_integrator` | Validates architecture–AI alignment |
-| `spec_qa` | Reviews specifications for completeness |
-| `test_architect` | Designs test strategy and coverage matrix |
-| `strategy_planner` | Plans milestone breakdown and execution strategy |
-| `pipeline_configurator` | Generates pipeline-config.json and CLAUDE.md |
-| `prd_writer` | Generates structured PRDs per milestone |
-| `qa_engineer` | Reviews implementation quality and test coverage |
-| `spec_reconciler` | Reconciles specs with actual implementation |
-| `release_engineer` | Manages release packaging and deployment |
-| `pipeline_dashboard` | Provides project status overview |
-| `ui_ux_designer` | Designs UI components with design system intelligence |
-
-Skills are installed to `~/.claude/skills/` via `ralph-pipeline install-skills` and are invoked by the pipeline at the appropriate phases.
+| Skill | Phase | Invocation |
+|-------|-------|-----------|
+| Requirements Engineering | Specification | Manual |
+| Software Architect | Specification | Manual |
+| UI/UX Designer | Specification | Manual |
+| AI Engineer | Specification | Manual |
+| Arch+AI Integrator | Specification | Manual |
+| Spec QA | Specification | Manual |
+| Test Architect | Specification | Manual |
+| Strategy Planner | Planning | Manual |
+| Pipeline Configurator | Planning | Manual |
+| PRD Writer | Phase 1 | Automated |
+| QA Engineer | Phase 3 | Automated |
+| Spec Reconciler | Phase 4 | Automated |
+| Release Engineer | Post-Pipeline | Manual |
+| Pipeline Dashboard | Utility | Manual |

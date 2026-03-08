@@ -11,8 +11,13 @@ def prd_generation_prompt(
     archive_dir: str,
     tasks_dir: str,
     scripts_dir: str,
+    drift_warning: str = "",
 ) -> str:
     """Build the PRD generation prompt. See bash generate_prd()."""
+    drift_section = ""
+    if drift_warning:
+        drift_section = f"\n\n{drift_warning}"
+
     return f"""{skill_content}
 
 ARGUMENTS: Write PRD for milestone M{milestone_id} ({slug}).
@@ -24,7 +29,7 @@ Instructions:
 - Write the PRD JSON directly to {tasks_dir}/prd-m{milestone_id}.json (no intermediate markdown PRD — go straight from milestone scope to JSON)
 - Write the context bundle to {scripts_dir}/context.md (see Section 8 of your skill instructions)
 - Branch name must be: ralph/m{milestone_id}-{slug}
-- Follow the exact JSON structure with userStories array, each having: id, title, description, acceptanceCriteria, priority, passes (false), notes."""
+- Follow the exact JSON structure with userStories array, each having: id, title, description, acceptanceCriteria, priority, passes (false), notes.{drift_section}"""
 
 
 def qa_review_prompt(
@@ -96,13 +101,22 @@ def test_fix_prompt(
     test_command: str,
     exit_code: int,
     test_tail: str,
+    domain_context: str = "",
 ) -> str:
     """Standard test fix prompt (no regressions). See bash run_test_fix_cycle()."""
+    context_section = ""
+    if domain_context:
+        context_section = f"""\n## Domain Context (architecture, design, test specs)
+Use this to understand expected types, API contracts, and data models.
+Do NOT refactor or realign code to architecture — only fix the specific error.
+
+{domain_context}
+"""
     return f"""You are fixing test failures on branch {branch}.
 Working directory: {test_dir}
 
 The test command `{test_command}` failed with exit code {exit_code}.
-
+{context_section}
 Test output (last 100 lines):
 ```
 {test_tail}
@@ -113,6 +127,7 @@ Instructions:
 - Fix the SOURCE CODE to make tests pass — do NOT modify test files unless the test itself has a clear bug (wrong import, typo)
 - Tests verify acceptance criteria from the PRD — the tests define correct behavior
 - Focus on the actual assertion errors: expected vs received values indicate contract mismatches
+- Use the domain context above to understand the correct types, API shapes, and data models when fixing structural mismatches
 - Only fix what is broken — do not refactor or add features
 - Commit each fix with message: fix: test failure — <brief description>"""
 
@@ -128,8 +143,17 @@ def regression_fix_prompt(
     current_failures: str,
     merge_diff: str,
     regression_context: str,
+    domain_context: str = "",
 ) -> str:
     """Regression-aware fix prompt. See bash _build_regression_fix_prompt()."""
+    context_section = ""
+    if domain_context:
+        context_section = f"""\n## Domain Context (architecture, design, test specs)
+Use this to understand expected types, API contracts, and data models.
+Do NOT refactor or realign code to architecture — only fix the specific error.
+
+{domain_context}
+"""
     return f"""You are fixing test failures on branch {branch} after merging milestone M{milestone}.
 Working directory: {test_dir}
 
@@ -154,7 +178,7 @@ The test command `{test_command}` failed with exit code {exit_code}.
 
 ## Context from previous milestones whose tests broke:
 {regression_context}
-
+{context_section}
 ## Test output (last 100 lines):
 ```
 {test_tail}
@@ -168,6 +192,7 @@ The test command `{test_command}` failed with exit code {exit_code}.
 - Read the failing test files to understand what behavior they expect.
 - Read the source files changed in the merge diff to find what broke the contract.
 - Focus on assertion errors: expected vs received values show the exact contract mismatch.
+- Use the domain context above to understand the correct types, API shapes, and data models when fixing structural mismatches.
 - Only fix what is broken — do not refactor or add features.
 - Commit each fix with message: fix: regression — <brief description>"""
 
@@ -178,17 +203,33 @@ def gate_fix_prompt(
     slug: str,
     project_root: str,
     gate_errors: str,
+    domain_context: str = "",
+    type_config: str = "",
 ) -> str:
     """Gate check fix prompt. See bash merge_and_verify()."""
+    context_section = ""
+    if domain_context:
+        context_section = f"""\n## Domain Context (architecture, design, test specs)
+Use this to understand expected types, API contracts, and data models.
+Do NOT refactor or realign code to architecture — only fix the specific error.
+
+{domain_context}
+"""
+    type_config_section = ""
+    if type_config:
+        type_config_section = f"""\n## Type / Lint Configuration
+{type_config}
+"""
     return f"""You are fixing build/typecheck errors on branch {base_branch} after merging M{milestone} ({slug}).
 Working directory: {project_root}
 
 The following checks failed:
 
 {gate_errors}
-
+{context_section}{type_config_section}
 Instructions:
 - Read the failing files and fix the errors
+- Use the domain context and type configuration above to understand the correct types and API contracts
 - Only fix what is broken — do not refactor or add features
 - Commit each fix with message: fix: gate check — <brief description>"""
 

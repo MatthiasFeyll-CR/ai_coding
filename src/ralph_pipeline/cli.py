@@ -10,7 +10,8 @@ from pathlib import Path
 
 from ralph_pipeline import __version__
 from ralph_pipeline.ai.claude import ClaudeRunner
-from ralph_pipeline.ai.env import AIEnvError, build_claude_env, load_and_validate_ai_env
+from ralph_pipeline.ai.env import (AIEnvError, build_claude_env,
+                                   load_and_validate_ai_env)
 from ralph_pipeline.config import PipelineConfig
 from ralph_pipeline.git_ops import GitOps
 from ralph_pipeline.infra.health import ServiceHealthChecker
@@ -21,7 +22,8 @@ from ralph_pipeline.lockfile import LockfileError
 from ralph_pipeline.lockfile import acquire as acquire_lock
 from ralph_pipeline.lockfile import release as release_lock
 from ralph_pipeline.log import PipelineLogger
-from ralph_pipeline.phases.phase0_bootstrap import Phase0Error, run_phase0_bootstrap
+from ralph_pipeline.phases.phase0_bootstrap import (Phase0Error,
+                                                    run_phase0_bootstrap)
 from ralph_pipeline.runner import MilestoneRunner
 from ralph_pipeline.state import PipelineState
 from ralph_pipeline.subprocess_utils import set_dry_run
@@ -318,6 +320,25 @@ def run_pipeline(args: argparse.Namespace) -> None:
             total_milestones=len(config.milestones),
             project_name=config.project.name,
         )
+
+        # ── Reconciliation debt gate ──────────────────────────────────
+        debt = state.reconciliation_debt()
+        if debt:
+            plogger.warning(
+                f"Reconciliation debt: milestones {debt} have unreconciled spec drift"
+            )
+            if config.reconciliation.blocking:
+                plogger.error(
+                    f"Blocking M{milestone_config.id} — prior milestones {debt} "
+                    f"failed reconciliation. Specs may be stale.\n"
+                    f"Fix: run /spec_reconciler manually for the failed milestones, "
+                    f"then resume with: ralph-pipeline run --resume\n"
+                    f"Or disable blocking: set reconciliation.blocking=false in "
+                    f"pipeline-config.json"
+                )
+                plogger.show_summary(state, config)
+                sys.exit(1)
+
         plogger.section(f"Milestone {milestone_config.id}: {milestone_config.name}")
         plogger.show_status_panel()
 
@@ -505,5 +526,9 @@ def main() -> None:
         validate_infra(args)
     else:
         parser.print_help()
+        sys.exit(0)
+        sys.exit(0)
+        sys.exit(0)
+        sys.exit(0)
         sys.exit(0)
         sys.exit(0)

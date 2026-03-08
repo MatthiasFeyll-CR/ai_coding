@@ -161,6 +161,7 @@ Produce `tasks/prd-mN.json` directly from the milestone scope file and upstream 
       ],
       "priority": 1,
       "passes": false,
+      "testIds": ["T-1.1.01", "T-1.1.02", "API-1.01"],
       "notes": "Architecture: docs/02-architecture/[file] § [section] — [ref]\nDesign: docs/03-design/[file] § [section] — [ref]\nTesting: docs/04-test-architecture/test-matrix.md § [Test IDs]\nFiles: [expected file paths]\nGotchas: [pitfalls]",
       "context": {
         "data_model": ["CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR NOT NULL UNIQUE, ...)"],
@@ -183,6 +184,7 @@ Produce `tasks/prd-mN.json` directly from the milestone scope file and upstream 
 5. **branchName format:** `ralph/m[milestone-number]-[kebab-case-milestone-name]`
 6. **Always include "Typecheck passes"** in acceptance criteria.
 7. **Acceptance criteria must be verifiable** — not vague. Ralph needs to check each one.
+8. **Every story must include a `testIds` array** listing all test IDs from the Test Architect's `test-matrix.md` that apply to that story. Use the exact IDs (e.g., `["T-1.1.01", "API-1.01"]`). The pipeline reads this field directly for automated coverage analysis — it is the **authoritative source** of which tests belong to which story. If a story has no test matrix entries (scaffolding/config stories), use an empty array `[]`. The `testIds` array must always agree with the test IDs mentioned in the `Testing:` line of the notes field — they are the same IDs in two formats (machine-readable and human-readable).
 
 ### Archiving
 
@@ -212,6 +214,8 @@ Before writing the JSON, validate that stories are right-sized:
 - [ ] UI stories have "Verify in browser" in acceptance criteria
 - [ ] Acceptance criteria are verifiable (not vague)
 - [ ] Notes field populated with structured implementation hints
+- [ ] Every story has a `testIds` array with correct test IDs (or empty `[]` for no-test stories)
+- [ ] `testIds` arrays agree with the `Testing:` line in notes
 - [ ] branchName follows convention: `ralph/mN-kebab-name`
 
 ---
@@ -240,7 +244,17 @@ Extract and compile these sections from upstream docs, **only for content refere
    [teardown command]   # clean slate
    [setup command]      # start dependency services
    ```
-9. **Browser testing** (conditional) — if the project has a frontend (check `test_infrastructure.runtimes` or `gate_checks` for frontend entries), include browser testing instructions. If backend-only, omit this section entirely.
+9. **Test manifest instructions** — include instructions for Ralph to maintain `.ralph/test-manifest.json`. After implementing each test from the test matrix, Ralph must register it in the manifest:
+   ```json
+   {
+     "tests": {
+       "T-1.1.01": {"file": "tests/test_auth.py", "function": "test_login_valid_credentials"},
+       "API-1.01": {"file": "tests/test_api.py", "function": "test_create_user_endpoint"}
+     }
+   }
+   ```
+   The pipeline reads this manifest for automated coverage analysis. If the manifest does not exist, create it. If it exists, merge new entries — never overwrite existing entries from previous milestones.
+10. **Browser testing** (conditional) — if the project has a frontend (check `test_infrastructure.runtimes` or `gate_checks` for frontend entries), include browser testing instructions. If backend-only, omit this section entirely.
 
 ### Bundle Format
 
@@ -298,6 +312,20 @@ Before your first quality check in this milestone, ensure test infrastructure is
 [setup command from pipeline-config.json]      # start dependency services
 \`\`\`
 
+## Test Manifest
+
+After implementing each test from the test matrix, register it in `.ralph/test-manifest.json`:
+
+\`\`\`json
+{
+  "tests": {
+    "T-X.X.01": {"file": "tests/test_example.py", "function": "test_example_function"},
+  }
+}
+\`\`\`
+
+If the manifest already exists (from a previous milestone), merge new entries — never overwrite existing ones. The pipeline reads this manifest for automated coverage analysis.
+
 ## Browser Testing (if frontend exists)
 
 [Browser testing instructions — include only if project has frontend runtime]
@@ -337,13 +365,14 @@ The pipeline validates context.md after you generate it. If the bundle exceeds t
 
 1. **Quality Checks** — the concrete commands Ralph must run. Never truncated.
 2. **Test Infrastructure Setup** — service startup commands. Never truncated.
-3. **Test Specifications** — full test case definitions (Ralph writes tests first).
-4. **Architecture Reference** — data model, API endpoints, project structure.
-5. **Design Reference** — component specs, wireframes.
-6. **AI Reference** — system prompts, tool schemas.
-7. **Browser Testing** — conditional browser instructions.
-8. **Codebase Patterns** — bullet list from previous milestones (truncated to top 10).
-9. **Codebase Snapshot** — file tree + contents (truncated to tree-only, contents omitted).
+3. **Test Manifest** — instructions for Ralph to register implemented tests. Never truncated.
+4. **Test Specifications** — full test case definitions (Ralph writes tests first).
+5. **Architecture Reference** — data model, API endpoints, project structure.
+6. **Design Reference** — component specs, wireframes.
+7. **AI Reference** — system prompts, tool schemas.
+8. **Browser Testing** — conditional browser instructions.
+9. **Codebase Patterns** — bullet list from previous milestones (truncated to top 10).
+10. **Codebase Snapshot** — file tree + contents (truncated to tree-only, contents omitted).
 
 **Why this matters:** When the pipeline truncates, it removes file contents from the Codebase Snapshot first and summarises Codebase Patterns. Because you also embed per-story references directly in `prd.json` (see Section 5 "Inline Story Context"), Ralph still has access to the most critical details even if context.md is truncated.
 

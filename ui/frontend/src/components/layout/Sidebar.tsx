@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
-import { PlusIcon, SettingsIcon } from 'lucide-react';
+import { BookOpenIcon, PlusIcon, SettingsIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -85,6 +85,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const isSettingsActive = location.pathname === '/settings';
+  const isDocsActive = location.pathname === '/documentation';
 
   const { data: projects, isLoading } = useQuery({
     queryKey: ['projects'],
@@ -192,8 +193,22 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Settings link at bottom */}
-      <div className="border-t border-border-subtle p-4">
+      {/* Bottom nav: Documentation + Settings */}
+      <div className="border-t border-border-subtle p-4 space-y-2">
+        <button
+          onClick={() => navigate('/documentation')}
+          className={clsx(
+            'w-full rounded-lg transition-colors',
+            'hover:bg-bg-tertiary',
+            sidebarCollapsed ? 'p-2 flex items-center justify-center' : 'p-3 flex items-center gap-3',
+            isDocsActive && 'bg-bg-tertiary border-l-4 border-accent-purple'
+          )}
+        >
+          <BookOpenIcon className="w-5 h-5 text-text-muted shrink-0" />
+          {!sidebarCollapsed && (
+            <span className="font-medium text-sm">Documentation</span>
+          )}
+        </button>
         <button
           onClick={() => navigate('/settings')}
           className={clsx(

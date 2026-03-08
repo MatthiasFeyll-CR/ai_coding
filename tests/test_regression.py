@@ -113,3 +113,52 @@ FAIL src/components/Button.test.tsx
         ]
         context = analyzer.build_fix_context(regressions, 2)
         assert "M1" in context
+
+    def test_build_fix_context_with_archived_prd(self, tmp_path):
+        import json
+
+        git = MagicMock()
+        state = self._make_state()
+        analyzer = RegressionAnalyzer(state, MagicMock(), git)
+
+        # Create an archived PRD
+        archive_dir = tmp_path / "archive"
+        m1_dir = archive_dir / "m1-foundation"
+        m1_dir.mkdir(parents=True)
+        prd = {
+            "userStories": [
+                {
+                    "title": "User Login",
+                    "acceptanceCriteria": [
+                        "Returns JWT token on success",
+                        "Returns 401 on bad credentials",
+                    ],
+                }
+            ]
+        }
+        (m1_dir / "prd.json").write_text(json.dumps(prd))
+
+        regressions = [
+            FailedTest(
+                file="tests/test_auth.py", owner_milestone=1, classification="REGRESSION"
+            ),
+        ]
+        context = analyzer.build_fix_context(regressions, 2, archive_dir=archive_dir)
+        assert "M1" in context
+        assert "User Login" in context
+        assert "JWT token" in context
+        assert "401" in context
+
+    def test_build_fix_context_without_archive_dir(self):
+        git = MagicMock()
+        state = self._make_state()
+        analyzer = RegressionAnalyzer(state, MagicMock(), git)
+
+        regressions = [
+            FailedTest(
+                file="tests/test_a.py", owner_milestone=1, classification="REGRESSION"
+            ),
+        ]
+        # No archive_dir — should still produce header-only context
+        context = analyzer.build_fix_context(regressions, 2, archive_dir=None)
+        assert "M1" in context

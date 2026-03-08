@@ -89,6 +89,7 @@ class MilestoneState(BaseModel):
     phase: str = "pending"
     bugfix_cycle: int = 0
     test_fix_cycle: int = 0
+    reconciliation_status: Optional[str] = None  # "success" | "failed" | None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
 
@@ -138,3 +139,11 @@ class PipelineState(BaseModel):
             ms.completed_at = (
                 datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             )
+
+    def reconciliation_debt(self) -> list[int]:
+        """Return milestone IDs where reconciliation failed."""
+        return [
+            ms.id
+            for ms in self.milestones.values()
+            if ms.reconciliation_status == "failed"
+        ]

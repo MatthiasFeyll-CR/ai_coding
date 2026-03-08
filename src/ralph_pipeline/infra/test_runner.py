@@ -272,6 +272,7 @@ class TestRunner:
         model: str = "",
         test_command: str | None = None,
         log_dir: Path | None = None,
+        fix_context_max_lines: int = 800,
     ) -> TestResult:
         """Run tests, on failure invoke Claude fix loop with regression analysis."""
         result = self.run_test_suite(
@@ -279,6 +280,11 @@ class TestRunner:
         )
         if result.passed:
             return result
+
+        # Load domain context once for all fix cycles
+        domain_ctx = load_domain_context(
+            self.project_root, max_lines=fix_context_max_lines
+        )
 
         for cycle in range(1, max_cycles + 1):
             self.log.info(
@@ -312,8 +318,10 @@ class TestRunner:
                         merge_diff = self.git.diff_stat(
                             f"pre-m{milestone}-merge", "HEAD", max_lines=40
                         )
+                        archive_dir = self.project_root / ".ralph" / "archive"
                         reg_context = regression_analyzer.build_fix_context(
-                            regressions, milestone
+                            regressions, milestone,
+                            archive_dir=archive_dir if archive_dir.exists() else None,
                         )
                         prompt = regression_fix_prompt(
                             milestone=milestone,
@@ -326,6 +334,7 @@ class TestRunner:
                             current_failures=cur_str,
                             merge_diff=merge_diff,
                             regression_context=reg_context,
+                            domain_context=domain_ctx,
                         )
 
             if not prompt:
@@ -335,6 +344,7 @@ class TestRunner:
                     test_command=cmd,
                     exit_code=result.exit_code,
                     test_tail=test_tail,
+                    domain_context=domain_ctx,
                 )
 
             log_file = None

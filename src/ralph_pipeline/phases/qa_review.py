@@ -5,10 +5,14 @@ Bash reference: run_qa() in pipeline.sh lines 1404-1524.
 
 from __future__ import annotations
 
+import ast
 import json
+import logging
 import re
 import time
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 from ralph_pipeline.ai.claude import ClaudeError, ClaudeRunner
 from ralph_pipeline.ai.prompts import qa_review_prompt
@@ -33,8 +37,21 @@ def _extract_verdict(qa_report: Path) -> str:
     return "UNKNOWN"
 
 
+_TEST_ID_PATTERN = re.compile(
+    r"\b(T-[\d.]+|API-[\d.]+|DB-[\d.]+|UI-[\d.]+|"
+    r"LOOP-[\d]+|STATE-[\d]+|TIMEOUT-[\d]+|LEAK-[\d]+|"
+    r"INTEGRITY-[\d]+|AI-SAFE-[\d]+|SCN-[\d]+|JOURNEY-[\d]+|"
+    r"CONC-[\d]+|ERR-[\d]+)\b"
+)
+
+
 def _extract_milestone_test_ids(prd_path: Path) -> list[str]:
-    """Extract test IDs from PRD story notes.
+    """Extract test IDs from PRD stories.
+
+    Uses a three-tier strategy (highest priority first):
+    1. Structured ``testIds`` array per story (deterministic).
+    2. Regex extraction from the ``notes`` string (fallback).
+    3. Regex extraction from ``context.test_cases`` entries (fallback).
 
     Bash reference: _extract_milestone_test_ids() lines 1265-1290.
     """
@@ -44,32 +61,135 @@ def _extract_milestone_test_ids(prd_path: Path) -> list[str]:
         return []
 
     ids: set[str] = set()
-    pattern = re.compile(
-        r"\b(T-[\d.]+|API-[\d.]+|DB-[\d.]+|UI-[\d.]+|"
-        r"LOOP-[\d]+|STATE-[\d]+|TIMEOUT-[\d]+|LEAK-[\d]+|"
-        r"INTEGRITY-[\d]+|AI-SAFE-[\d]+|SCN-[\d]+|JOURNEY-[\d]+|"
-        r"CONC-[\d]+|ERR-[\d]+)\b"
-    )
+
     for story in prd.get("userStories", []):
+        story_id = story.get("id", "?")
+
+        # --- Tier 1: structured testIds field (preferred) ---
+        test_ids_field = story.get("testIds")
+        if isinstance(test_ids_field, list):
+            for tid in test_ids_field:
+                if isinstance(tid, str) and _TEST_ID_PATTERN.fullmatch(tid):
+                    ids.add(tid)
+                elif isinstance(tid, str):
+                    _log.warning(
+                        "Story %s: testIds entry %r does not match "
+                        "expected ID pattern — skipped",
+                        story_id,
+                        tid,
+                    )
+            # If the structured field is present, skip regex fallback for
+            # this story — the structured field is authoritative.
+            continue
+
+        # --- Tier 2: regex on notes string (fallback) ---
         notes = story.get("notes", "")
-        for m in pattern.finditer(notes):
-            ids.add(m.group(1))
+        if not isinstance(notes, str):
+            _log.warning(
+                "Story %s: 'notes' field is %s, expected str — skipped",
+                story_id,
+                type(notes).__name__,
+            )
+        else:
+            for m in _TEST_ID_PATTERN.finditer(notes):
+                ids.add(m.group(1))
+
+        # --- Tier 3: regex on context.test_cases entries ---
+        ctx = story.get("context", {})
+        if isinstance(ctx, dict):
+            for tc in ctx.get("test_cases", []):
+                if isinstance(tc, str):
+                    for m in _TEST_ID_PATTERN.finditer(tc):
+                        ids.add(m.group(1))
 
     return sorted(ids)
 
 
-def _find_implemented_test_ids(test_ids: list[str], search_dir: Path) -> list[str]:
+def _load_test_manifest(project_root: Path) -> dict[str, dict]:
+    """Load ``.ralph/test-manifest.json`` if it exists.
+
+    Returns a mapping of test-ID → {"file": ..., "function": ...}.
+    """
+    manifest_path = project_root / ".ralph" / "test-manifest.json"
+    if not manifest_path.exists():
+        return {}
+    try:
+        data = json.loads(manifest_path.read_text())
+        tests = data.get("tests", {})
+        if isinstance(tests, dict):
+            return tests
+    except (json.JSONDecodeError, OSError) as exc:
+        _log.warning("Failed to read test manifest: %s", exc)
+    return {}
+
+
+def _ast_search_python_tests(test_id: str, search_dir: Path) -> bool:
+    """Use Python AST to search for *test_id* in test function names and docstrings.
+
+    Only scans ``test_*.py`` / ``*_test.py`` files under *search_dir*.
+    Returns True if any match is found.
+    """
+    # Build patterns: exact ID and common normalised forms
+    normalised = test_id.replace("-", "_").replace(".", "_").lower()
+    patterns = {test_id, test_id.lower(), normalised}
+
+    test_files = list(search_dir.rglob("test_*.py")) + list(
+        search_dir.rglob("*_test.py")
+    )
+
+    for py_file in test_files:
+        try:
+            tree = ast.parse(py_file.read_text(), filename=str(py_file))
+        except (SyntaxError, OSError):
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                name_lower = node.name.lower()
+                # Check function name contains the ID
+                if any(p in name_lower for p in patterns):
+                    return True
+                # Check docstring contains the ID
+                docstring = ast.get_docstring(node)
+                if docstring:
+                    doc_lower = docstring.lower()
+                    if any(p in doc_lower for p in patterns):
+                        return True
+
+    return False
+
+
+def _find_implemented_test_ids(
+    test_ids: list[str], search_dir: Path, project_root: Path | None = None,
+) -> list[str]:
     """Search codebase for test ID references.
+
+    Uses a three-tier strategy (first match wins per ID):
+    1. Lookup in ``.ralph/test-manifest.json`` (deterministic).
+    2. AST-based search in Python test files (structural).
+    3. ``grep`` heuristic across all supported languages (fallback).
 
     Bash reference: _find_implemented_test_ids() lines 1293-1320.
     """
+    from ralph_pipeline.subprocess_utils import SubprocessError, run_command
+
+    manifest = _load_test_manifest(project_root or search_dir)
     found: list[str] = []
+
     for tid in test_ids:
+        # --- Tier 1: manifest lookup ---
+        if tid in manifest:
+            found.append(tid)
+            continue
+
+        # --- Tier 2: AST-based Python search ---
+        if _ast_search_python_tests(tid, search_dir):
+            found.append(tid)
+            continue
+
+        # --- Tier 3: grep fallback (all languages) ---
         # Normalize: T-1.2.01 → T_*1_*2_*01
         pattern = tid.replace("-", "_*").replace(".", "_*")
-        # Search test files
-        from ralph_pipeline.subprocess_utils import SubprocessError, run_command
-
         try:
             result = run_command(
                 f"grep -rlE '({re.escape(tid)}|{pattern})' {search_dir} "
@@ -117,7 +237,7 @@ def _analyze_test_coverage(
 
     plogger.info(f"[coverage] Found {len(expected_ids)} test IDs in PRD")
 
-    found_ids = _find_implemented_test_ids(expected_ids, project_root)
+    found_ids = _find_implemented_test_ids(expected_ids, project_root, project_root)
     missing_count = len(expected_ids) - len(found_ids)
 
     plogger.info(
@@ -213,6 +333,8 @@ def run_qa_review(
                 plogger,
                 claude=claude,
                 event_logger=event_logger,
+                bugfix_cycle=cycle,
+                qa_report_path=qa_report,
             )
 
         plogger.info(f"Running QA for M{milestone.id} (cycle {cycle})...")
@@ -304,5 +426,4 @@ def run_qa_review(
             _archive_milestone(milestone, config, project_root, plogger)
             return False
 
-    return False
     return False

@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-from ralph_pipeline.ai.prompts import (
-    gate_fix_prompt,
-    prd_generation_prompt,
-    qa_review_prompt,
-    reconciliation_prompt,
-    regression_fix_prompt,
-    test_fix_prompt,
-)
+from ralph_pipeline.ai.prompts import (gate_fix_prompt, prd_generation_prompt,
+                                       qa_review_prompt, reconciliation_prompt,
+                                       regression_fix_prompt, test_fix_prompt)
 
 
 class TestPrompts:
@@ -60,6 +55,22 @@ class TestPrompts:
         assert "ralph/m1-foundation" in result
         assert "pytest" in result
         assert "AssertionError" in result
+        # No domain context by default
+        assert "Domain Context" not in result
+
+    def test_test_fix_prompt_with_domain_context(self):
+        result = test_fix_prompt(
+            branch="ralph/m1-foundation",
+            test_dir="/project",
+            test_command="pytest",
+            exit_code=1,
+            test_tail="AssertionError: expected 1 got 2",
+            domain_context="## Architecture Reference\nAPI returns paginated results",
+        )
+        assert "Domain Context" in result
+        assert "Architecture Reference" in result
+        assert "paginated results" in result
+        assert "do NOT refactor" in result.lower() or "Do NOT refactor" in result
 
     def test_regression_fix_prompt(self):
         result = regression_fix_prompt(
@@ -77,6 +88,25 @@ class TestPrompts:
         assert "REGRESSION" in result
         assert "M2" in result
         assert "test_auth" in result
+        # No domain context by default
+        assert "Domain Context" not in result
+
+    def test_regression_fix_prompt_with_domain_context(self):
+        result = regression_fix_prompt(
+            milestone=2,
+            branch="main",
+            test_dir="/project",
+            test_command="pytest",
+            exit_code=1,
+            test_tail="test_auth FAILED",
+            regression_failures="tests/test_auth.py (from M1)",
+            current_failures="tests/test_new.py",
+            merge_diff="src/auth.py | 10 ++++----",
+            regression_context="### M1 — tests broke",
+            domain_context="## Architecture Reference\nAuth uses JWT tokens",
+        )
+        assert "Domain Context" in result
+        assert "JWT tokens" in result
 
     def test_gate_fix_prompt(self):
         result = gate_fix_prompt(
@@ -88,6 +118,32 @@ class TestPrompts:
         )
         assert "main" in result
         assert "typecheck" in result
+        # No domain context by default
+        assert "Domain Context" not in result
+
+    def test_gate_fix_prompt_with_domain_context(self):
+        result = gate_fix_prompt(
+            base_branch="main",
+            milestone=1,
+            slug="foundation",
+            project_root="/project",
+            gate_errors="=== typecheck FAILED ===\nTS2304: Cannot find name",
+            domain_context="## Architecture Reference\nUser type has id, name, email",
+        )
+        assert "Domain Context" in result
+        assert "User type" in result
+
+    def test_gate_fix_prompt_with_type_config(self):
+        result = gate_fix_prompt(
+            base_branch="main",
+            milestone=1,
+            slug="foundation",
+            project_root="/project",
+            gate_errors="=== typecheck FAILED ===",
+            type_config="### tsconfig.json\n```\n{\"strict\": true}\n```",
+        )
+        assert "Type / Lint Configuration" in result
+        assert "tsconfig.json" in result
 
     def test_reconciliation_prompt(self):
         result = reconciliation_prompt(

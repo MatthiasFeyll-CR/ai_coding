@@ -217,11 +217,18 @@ class ContextLimitsConfig(BaseModel):
     max_tokens: int = 15000
     warn_pct: float = 80.0  # warn at this % of the limit
     tokens_per_line: float = 4.5  # heuristic multiplier
+    fix_context_max_lines: int = 800  # max lines injected into fix prompts
 
 
 class RetryConfig(BaseModel):
     max_retries: int = 3
     backoff_seconds: int = 30
+
+
+class ReconciliationConfig(BaseModel):
+    """Controls reconciliation behaviour after each milestone."""
+
+    blocking: bool = True  # If True, block next milestone when reconciliation fails
 
 
 class CostConfig(BaseModel):
@@ -249,6 +256,7 @@ class PipelineConfig(BaseModel):
     retry: RetryConfig = RetryConfig()
     cost: CostConfig = CostConfig()
     context_limits: ContextLimitsConfig = ContextLimitsConfig()
+    reconciliation: ReconciliationConfig = ReconciliationConfig()
 
     @field_validator("milestones")
     @classmethod

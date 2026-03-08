@@ -131,9 +131,16 @@ class RegressionAnalyzer:
         return failures
 
     def build_fix_context(
-        self, regressions: list[FailedTest], current_milestone: int
+        self,
+        regressions: list[FailedTest],
+        current_milestone: int,
+        archive_dir: Path | None = None,
     ) -> str:
-        """Build regression context string for fix prompt."""
+        """Build regression context string for fix prompt.
+
+        Loads archived PRD summaries for each broken milestone so the fix
+        agent understands what behaviour previous tests expect.
+        """
         seen_milestones: set[int] = set()
         context_parts: list[str] = []
 
@@ -142,13 +149,44 @@ class RegressionAnalyzer:
                 continue
             seen_milestones.add(f.owner_milestone)
 
-            # Try to read archived PRD
-            # This is best-effort; the caller passes config for archive path
-            context_parts.append(
-                f"### M{f.owner_milestone} — tests from this milestone broke after merge\n"
-            )
+            header = f"### M{f.owner_milestone} — tests from this milestone broke after merge\n"
+            context_parts.append(header)
+
+            # Load archived PRD for this milestone (best-effort)
+            if archive_dir is not None:
+                prd_path = self._find_archived_prd(archive_dir, f.owner_milestone)
+                if prd_path:
+                    try:
+                        import json
+                        prd_data = json.loads(prd_path.read_text())
+                        stories = prd_data.get("userStories", [])
+                        if stories:
+                            context_parts.append("Key acceptance criteria from archived PRD:\n")
+                            for story in stories[:10]:  # cap at 10 stories
+                                title = story.get("title", "untitled")
+                                criteria = story.get("acceptanceCriteria", [])
+                                context_parts.append(f"- **{title}**")
+                                for ac in criteria[:5]:  # cap per story
+                                    if isinstance(ac, str):
+                                        context_parts.append(f"  - {ac}")
+                            context_parts.append("")
+                    except (OSError, json.JSONDecodeError, KeyError):
+                        pass  # best-effort — skip if unreadable
 
         return "\n".join(context_parts) if context_parts else ""
+
+    @staticmethod
+    def _find_archived_prd(archive_dir: Path, milestone: int) -> Path | None:
+        """Locate the archived prd.json for a given milestone.
+
+        Archive layout: {archive_dir}/m{N}-{slug}/prd.json
+        """
+        for child in archive_dir.iterdir():
+            if child.is_dir() and child.name.startswith(f"m{milestone}-"):
+                prd = child / "prd.json"
+                if prd.exists():
+                    return prd
+        return None
 
     def build_fix_prompt(
         self,
@@ -156,6 +194,7 @@ class RegressionAnalyzer:
         current_milestone: int,
         test_output: str,
         config: PipelineConfig,
+        domain_context: str = "",
     ) -> str:
         """Build targeted fix prompt with regression context."""
         from ralph_pipeline.ai.prompts import regression_fix_prompt
@@ -169,7 +208,11 @@ class RegressionAnalyzer:
         cur_str = "\n".join(f.file for f in current)
 
         merge_diff = self.git.diff_stat(f"pre-m{current_milestone}-merge", "HEAD")
-        reg_context = self.build_fix_context(regressions, current_milestone)
+        archive_dir = self.project_root / config.paths.archive_dir
+        reg_context = self.build_fix_context(
+            regressions, current_milestone,
+            archive_dir=archive_dir if archive_dir.exists() else None,
+        )
         test_tail = "\n".join(test_output.splitlines()[-100:])
         branch = self.git.current_branch()
 
@@ -184,4 +227,5 @@ class RegressionAnalyzer:
             current_failures=cur_str,
             merge_diff=merge_diff,
             regression_context=reg_context,
+            domain_context=domain_context,
         )

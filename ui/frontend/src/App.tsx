@@ -5,6 +5,7 @@ import { LinkProjectModal } from './components/modals/LinkProjectModal';
 import { ModelSelectorModal } from './components/modals/ModelSelectorModal';
 import { ReinstantiateModal } from './components/modals/ReinstantiateModal';
 import { DashboardPage } from './pages/DashboardPage';
+import { DocumentationPage } from './pages/DocumentationPage';
 import { EditorPage } from './pages/EditorPage';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="editor/:projectId" element={<EditorPage />} />
           <Route path="requirements" element={<RequirementsPage />} />
           <Route path="requirements/:projectId" element={<RequirementsPage />} />
+          <Route path="documentation" element={<DocumentationPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

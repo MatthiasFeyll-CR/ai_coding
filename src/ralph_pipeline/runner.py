@@ -212,6 +212,7 @@ class MilestoneRunner:
             claude=self.claude,
             plogger=self.plogger,
             project_root=self.project_root,
+            pipeline_state=self.pipeline_state,
         )
         self.event_logger.emit(
             "phase_end", milestone=self.milestone.id, data={"phase": "prd_generation"}
@@ -274,7 +275,7 @@ class MilestoneRunner:
             "phase_start", milestone=self.milestone.id, data={"phase": "reconciliation"}
         )
         try:
-            run_reconciliation(
+            recon_success = run_reconciliation(
                 milestone=self.milestone,
                 config=self.config,
                 state=self.pipeline_state,
@@ -294,8 +295,26 @@ class MilestoneRunner:
             )
             self.fail()
             return
+
+        # Record reconciliation outcome in state
+        ms = self.pipeline_state.milestones[self.milestone.id]
+        ms.reconciliation_status = "success" if recon_success else "failed"
+        self.pipeline_state.save(self.state_file)
+
+        if not recon_success:
+            self.plogger.warning(
+                f"Reconciliation debt: M{self.milestone.id} specs not updated. "
+                f"Total unreconciled milestones: "
+                f"{self.pipeline_state.reconciliation_debt()}"
+            )
+
         self.event_logger.emit(
-            "phase_end", milestone=self.milestone.id, data={"phase": "reconciliation"}
+            "phase_end",
+            milestone=self.milestone.id,
+            data={
+                "phase": "reconciliation",
+                "reconciliation_success": recon_success,
+            },
         )
         self.reconciled()
 

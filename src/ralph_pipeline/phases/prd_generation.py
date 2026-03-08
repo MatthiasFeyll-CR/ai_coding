@@ -10,15 +10,12 @@ from pathlib import Path
 from ralph_pipeline.ai.claude import ClaudeError, ClaudeRunner
 from ralph_pipeline.ai.prompts import prd_generation_prompt
 from ralph_pipeline.config import MilestoneConfig, PipelineConfig
-from ralph_pipeline.context_validator import (
-    ContextOverflowError,
-    validate_context_bundle,
-)
+from ralph_pipeline.context_validator import (ContextOverflowError,
+                                              validate_context_bundle)
 from ralph_pipeline.log import PipelineLogger
-from ralph_pipeline.milestone_schema import (
-    MilestoneScopeValidationError,
-    validate_milestone_scope,
-)
+from ralph_pipeline.milestone_schema import (MilestoneScopeValidationError,
+                                             validate_milestone_scope)
+from ralph_pipeline.state import PipelineState
 from ralph_pipeline.subprocess_utils import is_dry_run
 
 
@@ -34,6 +31,7 @@ def run_prd_generation(
     claude: ClaudeRunner,
     plogger: PipelineLogger,
     project_root: Path,
+    pipeline_state: PipelineState | None = None,
 ) -> None:
     """Generate PRD for a milestone.
 
@@ -79,6 +77,24 @@ def run_prd_generation(
     # Structured scope file path for context-weight warnings
     scope_path = milestones_dir / f"milestone-{milestone.id}.json"
 
+    # ── Build drift warning if prior milestones failed reconciliation ──
+    drift_warning = ""
+    if pipeline_state is not None:
+        debt = pipeline_state.reconciliation_debt()
+        if debt:
+            debt_str = ", ".join(f"M{mid}" for mid in debt)
+            drift_warning = (
+                f"SPEC DRIFT ADVISORY: Milestones {debt_str} failed spec "
+                f"reconciliation. Architecture/design docs may not reflect "
+                f"what was actually built in those milestones. Be aware of "
+                f"potential drift between spec docs and the codebase — when "
+                f"in doubt, verify against actual source files."
+            )
+            plogger.warning(
+                f"PRD generation for M{milestone.id}: injecting drift "
+                f"advisory for unreconciled milestones {debt}"
+            )
+
     prompt = prd_generation_prompt(
         skill_content=skill_content,
         milestone_id=milestone.id,
@@ -87,6 +103,7 @@ def run_prd_generation(
         archive_dir=str(archive_dir),
         tasks_dir=str(tasks_dir),
         scripts_dir=str(scripts_dir),
+        drift_warning=drift_warning,
     )
 
     log_dir = project_root / ".ralph" / "logs" / f"m{milestone.id}-{milestone.slug}"
