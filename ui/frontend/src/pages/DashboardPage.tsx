@@ -2,7 +2,7 @@ import { pipelineApi, projectsApi } from '@/api/client';
 import { SetupFlow } from '@/components/infrastructure/SetupFlow';
 import { ControlPanel } from '@/components/pipeline/ControlPanel';
 import { MilestoneDetail } from '@/components/pipeline/MilestoneDetail';
-import { MilestoneFlow } from '@/components/pipeline/MilestoneFlow';
+import { MilestoneTimeline } from '@/components/pipeline/MilestoneTimeline';
 import { TokenDashboard } from '@/components/pipeline/TokenDashboard';
 import { Badge } from '@/components/shared/Badge';
 import { Card } from '@/components/shared/Card';
@@ -217,8 +217,8 @@ export function DashboardPage() {
                 <ActivityIcon className="w-4 h-4 text-accent-green" />
                 <h3>Milestones</h3>
               </div>
-              <div className="flex-1">
-                <MilestoneFlow
+              <div className="flex-1 overflow-hidden">
+                <MilestoneTimeline
                   milestones={milestones}
                   selectedMilestoneId={effectiveMilestoneId}
                   pipelineStatus={activeProject.status}

@@ -16,7 +16,6 @@ from ralph_pipeline.ai.claude import ClaudeRunner
 from ralph_pipeline.config import MilestoneConfig, PipelineConfig
 from ralph_pipeline.context_refresh import refresh_context_for_bugfix
 from ralph_pipeline.git_ops import GitOps
-from ralph_pipeline.infra.test_runner import TestRunner
 from ralph_pipeline.log import PipelineLogger
 from ralph_pipeline.prd_schema import PRD, PRDLoadError
 from ralph_pipeline.subprocess_utils import is_dry_run
@@ -440,7 +439,6 @@ def run_ralph_execution(
     milestone: MilestoneConfig,
     config: PipelineConfig,
     git: GitOps,
-    test_runner: TestRunner,
     plogger: PipelineLogger,
     project_root: Path,
     claude: ClaudeRunner | None = None,
@@ -450,7 +448,9 @@ def run_ralph_execution(
 
     - Set up workspace (PRD symlink, progress, branch)
     - Run iterative Claude agent loop
-    - Run light test suite (log only)
+
+    Tests are not run here — the QA phase (Phase 3) runs the full test
+    suite immediately after and handles pass/fail decisions.
     """
     slug = milestone.slug
     max_iter = _resolve_iteration_budget(
@@ -493,24 +493,6 @@ def run_ralph_execution(
         plogger.warning(
             f"Ralph: M{milestone.id} completed with some stories still failing"
         )
-
-    # Light test run after Ralph — log results for QA but don't block
-    qa_dir = project_root / config.paths.qa_dir
-    qa_dir.mkdir(parents=True, exist_ok=True)
-
-    if config.test_execution.tier1.environments:
-        result = test_runner.run_tier1_tests(
-            f"post-ralph M{milestone.id}", log_dir=log_dir
-        )
-    else:
-        result = test_runner.run_test_suite(
-            f"post-ralph M{milestone.id}", tier=2, log_dir=log_dir
-        )
-
-    test_runner.store_results(
-        result,
-        qa_dir / f"test-results-post-ralph-m{milestone.id}.md",
-    )
 
 
 def run_ralph_bugfix(

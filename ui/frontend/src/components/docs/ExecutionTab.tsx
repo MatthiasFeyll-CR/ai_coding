@@ -61,7 +61,6 @@ const PHASE_DETAILS: Record<PhaseId, PhaseDetail> = {
       { action: 'Workspace setup', detail: 'Symlink prd.json, initialize progress.txt, create feature branch ralph/mN-slug' },
       { action: 'Inject runtime footer', detail: 'Append test commands + gate checks to CLAUDE.md (idempotent)' },
       { action: 'Agent loop', detail: 'Budget: stories × multiplier. Each iteration: read CLAUDE.md → invoke Claude → check for COMPLETE signal' },
-      { action: 'Post-Ralph tests', detail: 'Run light test suite (non-blocking, results logged)' },
     ],
     inputs: ['CLAUDE.md', '.ralph/context.md', '.ralph/prd.json', '.ralph/progress.txt'],
     outputs: ['Source code on feature branch', '.ralph/progress.txt (updated)'],

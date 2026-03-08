@@ -47,7 +47,7 @@ Appends to `CLAUDE.md`: test commands (Tier 1/2), integration tests, gate checks
 - Budget: `effective_stories × max_iterations_multiplier`
 - Each iteration: read `CLAUDE.md` as prompt → invoke Claude → check for `<promise>COMPLETE</promise>`
 - 2-second delay between iterations
-- Post-Ralph: light test suite (non-blocking)
+- No tests run post-completion — testing is deferred to Phase 3 (QA)
 
 ### Bugfix Mode
 - Triggered by QA FAIL

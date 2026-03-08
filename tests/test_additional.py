@@ -329,12 +329,10 @@ class TestPhaseDryRun:
 
         plogger = MagicMock()
         git = MagicMock()
-        test_runner = MagicMock()
         run_ralph_execution(
             milestone=MINIMAL_CONFIG.milestones[0],
             config=MINIMAL_CONFIG,
             git=git,
-            test_runner=test_runner,
             plogger=plogger,
             project_root=Path("/tmp/dry-test"),
         )

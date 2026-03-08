@@ -1,10 +1,10 @@
 import { Badge } from '@/components/shared/Badge';
 import {
-    Cell,
-    Pie,
-    PieChart,
-    ResponsiveContainer,
-    Tooltip,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
 } from 'recharts';
 
 const TIER_COMPARISON = [
@@ -14,8 +14,7 @@ const TIER_COMPARISON = [
 
 const ENFORCEMENT_POINTS = [
   { phase: 'Phase 2', point: 'Per-story checks', tier: 'T1', blocking: true, note: 'Ralph self-fixes inline' },
-  { phase: 'Phase 2', point: 'Post-Ralph run', tier: 'T2', blocking: false, note: 'Logged only' },
-  { phase: 'Phase 3', point: 'Pre-QA run', tier: 'T2', blocking: false, note: 'Fed to QA reviewer' },
+  { phase: 'Phase 3', point: 'QA test run', tier: 'T2', blocking: true, note: 'QA verdict gates milestone completion' },
 ];
 
 const TEST_ID_PATTERNS = [

@@ -58,15 +58,15 @@ Invokes the PRD Writer skill to produce `tasks/prd-mN.json` and `.ralph/context.
 
 ### Phase 2 — Ralph Execution
 
-Creates feature branch `ralph/mN-slug`, injects runtime footer (test commands, gate checks) into `CLAUDE.md`, then runs an iterative Claude coding loop. Iteration budget: `stories × max_iterations_multiplier`. Loops until `<promise>COMPLETE</promise>` signal or budget exhaustion. Light tests run post-completion (non-blocking).
+Creates feature branch `ralph/mN-slug`, injects runtime footer (test commands, gate checks) into `CLAUDE.md`, then runs an iterative Claude coding loop. Iteration budget: `stories × max_iterations_multiplier`. Loops until `<promise>COMPLETE</promise>` signal or budget exhaustion. No tests are run at the end of this phase — testing is deferred entirely to Phase 3.
 
-### Phase 3 — QA Review
+### Phase 3 — QA Review (blocking)
 
-Runs full test suite (Tier 2), analyzes test coverage against PRD test IDs (3-tier extraction + 3-tier finding), invokes QA Engineer skill. On FAIL verdict, triggers bugfix cycle: refreshes context with current codebase snapshot + QA summary, re-runs Ralph in bugfix mode, then re-runs QA. Up to `max_bugfix_cycles` iterations. On exhaustion, writes escalation report.
+Runs full test suite (Tier 2), analyzes test coverage against PRD test IDs (3-tier extraction + 3-tier finding), invokes QA Engineer skill. On FAIL verdict, triggers bugfix cycle: refreshes context with current codebase snapshot + QA summary, re-runs Ralph in bugfix mode, then re-runs QA. Up to `max_bugfix_cycles` iterations. On exhaustion, writes escalation report and **the pipeline halts** — the milestone is marked as failed, guaranteeing that no milestone proceeds to merge without passing QA.
 
 ### Phase 4 — Merge + Reconciliation
 
-Merges feature branch into base (`--no-ff`), registers test ownership for regression tracking, tags `mN-complete`. Runs both deterministic drift detection (path references vs actual tree) and AI-powered spec reconciliation. Reconciliation failures are non-fatal (warn and continue).
+Merges feature branch into base (`--no-ff`), registers test ownership for regression tracking, tags `mN-complete`. Runs both deterministic drift detection (path references vs actual tree) and AI-powered spec reconciliation. Merge failures are **fatal** (pipeline halts). Reconciliation failures are non-fatal (warn and continue); controlled by the `reconciliation.blocking` config option which gates the *next* milestone.
 
 ## Working Directory
 

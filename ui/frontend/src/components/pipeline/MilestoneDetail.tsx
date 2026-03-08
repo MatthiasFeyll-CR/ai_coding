@@ -1,5 +1,5 @@
 import { pipelineApi } from '@/api/client';
-import { PhaseFlow } from '@/components/pipeline/PhaseFlow';
+import { PhaseFSM } from '@/components/pipeline/PhaseFSM';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import type { ExecutionLog, MilestoneInfo, WebSocketEvents } from '@/types';
 import { useQuery } from '@tanstack/react-query';
@@ -129,7 +129,7 @@ export function MilestoneDetail({
           </h3>
         </div>
         <div className="px-2 pt-2">
-          <PhaseFlow
+          <PhaseFSM
             milestone={milestone}
             maxBugfixCycles={maxBugfixCycles}
             pipelineStatus={pipelineStatus}

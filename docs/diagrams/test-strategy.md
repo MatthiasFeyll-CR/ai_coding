@@ -66,5 +66,4 @@ When tests fail in a future milestone's QA:
 | Phase | Point | Tier | Blocking |
 |-------|-------|------|----------|
 | 2 | Per-story checks | T1 | Yes (Ralph self-fixes) |
-| 2 | Post-Ralph run | T2 | No (logged only) |
-| 3 | Pre-QA run | T2 | No (fed to QA reviewer) |
+| 3 | QA test run | T2 | Yes (QA verdict gates milestone) |

@@ -230,7 +230,6 @@ class MilestoneRunner:
             milestone=self.milestone,
             config=self.config,
             git=self.git,
-            test_runner=self.test_runner,
             plogger=self.plogger,
             project_root=self.project_root,
             claude=self.claude,
