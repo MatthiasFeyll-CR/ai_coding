@@ -255,6 +255,19 @@ def _write_back_config(
             config_data.setdefault("test_execution", {})
             config_data["test_execution"]["test_command"] = primary_cmd
 
+        # Set integration_test_command from remaining runtimes
+        if len(runtimes) > 1:
+            secondary_cmds = [
+                test_commands.get(rt.name, rt.test_cmd)
+                for rt in runtimes[1:]
+                if test_commands.get(rt.name, rt.test_cmd)
+            ]
+            if secondary_cmds:
+                config_data["test_execution"]["integration_test_command"] = (
+                    " && ".join(secondary_cmds) if len(secondary_cmds) > 1
+                    else secondary_cmds[0]
+                )
+
     # Set setup/teardown commands
     config_data.setdefault("test_execution", {})
     config_data["test_execution"]["setup_command"] = (
@@ -266,6 +279,12 @@ def _write_back_config(
     config_data["test_execution"]["force_teardown_command"] = (
         f"docker compose -f {compose_file} down -v --remove-orphans"
     )
+    # Set build_command for explicit image building (separate from setup)
+    config_data["test_execution"]["build_command"] = (
+        f"docker compose -f {compose_file} build"
+    )
+    # Set condition — guard check that Docker is available before running tests
+    config_data["test_execution"]["condition"] = "command -v docker"
     config_data["test_execution"]["setup_timeout_seconds"] = timeouts.setup_seconds
     config_data["test_execution"]["timeout_seconds"] = timeouts.test_seconds
     config_data["test_execution"]["build_timeout_seconds"] = timeouts.build_seconds

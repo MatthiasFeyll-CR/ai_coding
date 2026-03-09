@@ -230,9 +230,42 @@ def get_config(project_id):
     try:
         with open(project.config_path, "r") as f:
             config = json.load(f)
-        return jsonify(config)
     except FileNotFoundError:
         return jsonify({"error": "Config file not found"}), 404
+
+    # ── Backfill missing test_execution fields from tier1/compose data ───
+    # Phase 0 wrote tier1.environments but older runs didn't populate
+    # build_command, integration_test_command, or condition.  Derive them
+    # so the Parameters UI always shows concrete values.
+    te = config.get("test_execution", {})
+    tier1 = te.get("tier1", {})
+    envs = tier1.get("environments", [])
+    compose_file = tier1.get("compose_file", "")
+
+    if envs and compose_file:
+        # integration_test_command: secondary runtimes (index 1+)
+        if not te.get("integration_test_command"):
+            secondary_cmds = [
+                e["test_command"] for e in envs[1:] if e.get("test_command")
+            ]
+            if secondary_cmds:
+                te["integration_test_command"] = (
+                    " && ".join(secondary_cmds)
+                    if len(secondary_cmds) > 1
+                    else secondary_cmds[0]
+                )
+
+        # build_command: explicit image build
+        if not te.get("build_command"):
+            te["build_command"] = f"docker compose -f {compose_file} build"
+
+        # condition: Docker availability guard
+        if not te.get("condition"):
+            te["condition"] = "command -v docker"
+
+        config["test_execution"] = te
+
+    return jsonify(config)
 
 
 @bp.route("/<int:project_id>/config", methods=["PATCH"])

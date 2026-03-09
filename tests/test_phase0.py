@@ -329,6 +329,63 @@ class TestPhase0Bootstrap:
         assert "ready_command" not in services[0]
 
 
+    def test_write_back_multi_runtime(self, tmp_path: Path):
+        """Write-back sets integration_test_command, build_command, condition."""
+        config = _config_with_infra(
+            test_infrastructure={
+                "compose_file": "docker-compose.test.yml",
+                "services": [
+                    {"name": "postgres", "image": "postgres:16", "port": 5432},
+                ],
+                "runtimes": [
+                    {"name": "python", "test_cmd": "pytest tests/ -v"},
+                    {"name": "node", "test_cmd": "npx vitest run"},
+                ],
+            }
+        )
+        claude = self._make_claude()
+        plogger = self._make_plogger()
+        config_path = tmp_path / "pipeline-config.json"
+        config_path.write_text(config.model_dump_json(indent=2))
+
+        (tmp_path / "docker-compose.test.yml").write_text("version: '3'\n")
+        ralph_dir = tmp_path / ".ralph"
+        ralph_dir.mkdir(parents=True, exist_ok=True)
+        (ralph_dir / "phase0-verification.json").write_text(
+            json.dumps({
+                "verified": True,
+                "compose_file": "docker-compose.test.yml",
+                "steps": {"build": "pass", "setup": "pass", "health": "pass", "smoke": "pass", "teardown": "pass"},
+                "test_commands": {
+                    "python": "docker compose -f docker-compose.test.yml run --rm test-python pytest",
+                    "node": "docker compose -f docker-compose.test.yml run --rm test-node npx vitest run",
+                },
+            })
+        )
+
+        run_phase0_bootstrap(config, claude, plogger, tmp_path, config_path)
+
+        updated = json.loads(config_path.read_text())
+        te = updated["test_execution"]
+
+        # Primary runtime becomes test_command
+        assert te["test_command"] == "docker compose -f docker-compose.test.yml run --rm test-python pytest"
+
+        # Secondary runtime becomes integration_test_command
+        assert te["integration_test_command"] == "docker compose -f docker-compose.test.yml run --rm test-node npx vitest run"
+
+        # build_command should be set
+        assert te["build_command"] == "docker compose -f docker-compose.test.yml build"
+
+        # condition should be set (Docker availability check)
+        assert te["condition"] == "command -v docker"
+
+        # tier1 should have both environments
+        assert len(te["tier1"]["environments"]) == 2
+        assert te["tier1"]["environments"][0]["name"] == "python"
+        assert te["tier1"]["environments"][1]["name"] == "node"
+
+
 class TestPhase0DryRun:
     """Test that Phase 0 respects dry-run mode."""
 
