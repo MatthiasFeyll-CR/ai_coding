@@ -263,6 +263,54 @@ class TestGetTokens:
         assert len(data["history"]) == 3
         assert data["history"][0]["created_at"] == "2026-03-07T14:00:00Z"
 
+    def test_tokens_fallback_to_jsonl(self, client, linked_project, db_session):
+        """When state.json has empty sessions, cost data falls back to pipeline.jsonl."""
+        pid = linked_project["id"]
+        root = linked_project["root_path"]
+
+        ralph_dir = os.path.join(root, ".ralph")
+        os.makedirs(ralph_dir, exist_ok=True)
+        logs_dir = os.path.join(ralph_dir, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+
+        # state.json with empty sessions (as after reinitialization)
+        state = {"cost": {"sessions": []}}
+        with open(os.path.join(ralph_dir, "state.json"), "w") as f:
+            json.dump(state, f)
+
+        # pipeline.jsonl has the actual cost data
+        with open(os.path.join(logs_dir, "pipeline.jsonl"), "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "event": "claude_invocation",
+                        "session_id": "sess-p0",
+                        "ts": "2026-03-09T01:48:00Z",
+                        "phase": "phase0_scaffolding",
+                        "milestone": 0,
+                        "model": "claude-opus-4-6",
+                        "input_tokens": 3,
+                        "output_tokens": 192,
+                        "cache_creation_tokens": 1219,
+                        "cache_read_tokens": 111701,
+                        "cost_usd": 7.15,
+                    }
+                )
+                + "\n"
+            )
+
+        resp = client.get(f"/api/pipeline/{pid}/tokens")
+        data = resp.get_json()
+
+        # Should have picked up data from pipeline.jsonl
+        assert data["total"]["invocations"] == 1
+        assert data["total"]["input_tokens"] == 3
+        assert data["total"]["output_tokens"] == 192
+        assert abs(data["total"]["cost_usd"] - 7.15) < 0.01
+        assert data["by_phase"]["phase0_scaffolding"]["cost_usd"] > 0
+        assert len(data["history"]) == 1
+        assert data["history"][0]["created_at"] == "2026-03-09T01:48:00Z"
+
 
 class TestGetMilestones:
     """GET /api/pipeline/<id>/milestones"""

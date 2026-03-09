@@ -186,6 +186,13 @@ def run_pipeline(args: argparse.Namespace) -> None:
             except Exception:
                 base_branch = "main"
         state = PipelineState.initialize(config, base_branch)
+
+        # Recover phase 0 costs from pipeline.jsonl if they exist.
+        # Phase 0 consumes config sections after bootstrap, so if the
+        # pipeline is restarted fresh (not --resume) the costs can never
+        # be regenerated.  Replay them into the new state.
+        _recover_phase0_costs(state, ralph_dir / "logs" / "pipeline.jsonl", plogger)
+
         state.save(state_file)
 
     claude = ClaudeRunner(
@@ -390,6 +397,60 @@ def run_pipeline(args: argparse.Namespace) -> None:
     event_logger.emit("pipeline_complete")
     plogger.show_summary(state, config)
     plogger.success("Pipeline completed successfully!")
+
+
+def _recover_phase0_costs(
+    state: PipelineState,
+    jsonl_path: Path,
+    plogger: PipelineLogger,
+) -> None:
+    """Replay phase 0 claude_invocation costs from pipeline.jsonl into state.
+
+    Phase 0 sections are consumed (removed from config) after bootstrap,
+    so a fresh re-run cannot regenerate them.  If the JSONL already contains
+    phase 0 entries we must carry them forward.
+    """
+    if not jsonl_path.exists():
+        return
+
+    import json
+
+    recovered = 0
+    try:
+        with open(jsonl_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if (
+                    entry.get("event") != "claude_invocation"
+                    or entry.get("milestone") != 0
+                ):
+                    continue
+                state.cost.record(
+                    cost_usd=entry.get("cost_usd", 0.0),
+                    milestone=0,
+                    phase=entry.get("phase", "phase0"),
+                    model=entry.get("model", "unknown"),
+                    session_id=entry.get("session_id", ""),
+                    input_tokens=entry.get("input_tokens", 0),
+                    output_tokens=entry.get("output_tokens", 0),
+                    cache_creation_tokens=entry.get("cache_creation_tokens", 0),
+                    cache_read_tokens=entry.get("cache_read_tokens", 0),
+                )
+                recovered += 1
+    except OSError:
+        return
+
+    if recovered:
+        plogger.info(
+            f"Recovered {recovered} phase 0 cost entries from pipeline.jsonl "
+            f"(${state.cost.by_milestone.get(0, 0.0):.2f})"
+        )
 
 
 def _handle_resume(

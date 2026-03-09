@@ -426,3 +426,107 @@ class TestPipelineLoggerCost:
 
     def test_format_cost_normal(self):
         assert PipelineLogger._format_cost(1.23) == "$1.23"
+
+
+# ─── Phase 0 cost recovery from pipeline.jsonl ────────────────────────────────
+
+
+class TestRecoverPhase0Costs:
+    """Test _recover_phase0_costs replays phase 0 entries from pipeline.jsonl."""
+
+    def test_recovers_phase0_costs_from_jsonl(self, tmp_path: Path):
+        from ralph_pipeline.cli import _recover_phase0_costs
+
+        # Write JSONL with phase 0 + milestone 1 entries
+        jsonl = tmp_path / "pipeline.jsonl"
+        entries = [
+            {
+                "event": "claude_invocation",
+                "phase": "phase0_scaffolding",
+                "milestone": 0,
+                "model": "claude-opus-4-6",
+                "cost_usd": 7.15,
+                "session_id": "sess-p0-1",
+                "input_tokens": 3,
+                "output_tokens": 192,
+                "cache_creation_tokens": 1219,
+                "cache_read_tokens": 111701,
+            },
+            {
+                "event": "claude_invocation",
+                "phase": "phase0_test_infra",
+                "milestone": 0,
+                "model": "claude-opus-4-6",
+                "cost_usd": 0.34,
+                "session_id": "sess-p0-2",
+                "input_tokens": 286,
+                "output_tokens": 3394,
+                "cache_creation_tokens": 21842,
+                "cache_read_tokens": 234061,
+            },
+            {
+                "event": "pipeline_start",
+                "milestones": 5,
+            },
+            {
+                "event": "claude_invocation",
+                "phase": "prd_generation",
+                "milestone": 1,
+                "model": "claude-sonnet-4-5",
+                "cost_usd": 3.58,
+                "session_id": "sess-m1",
+                "input_tokens": 7905,
+                "output_tokens": 35855,
+                "cache_creation_tokens": 0,
+                "cache_read_tokens": 0,
+            },
+        ]
+        with open(jsonl, "w") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+
+        # Create fresh state (empty cost)
+        state = PipelineState(
+            base_branch="main",
+            current_milestone=1,
+            milestones={},
+        )
+
+        plogger = MagicMock()
+        _recover_phase0_costs(state, jsonl, plogger)
+
+        # Only phase 0 entries (milestone=0) should be recovered
+        assert state.cost.total_usd == pytest.approx(7.15 + 0.34)
+        assert state.cost.by_milestone.get(0) == pytest.approx(7.15 + 0.34)
+        assert 1 not in state.cost.by_milestone  # milestone 1 NOT recovered
+        assert len(state.cost.sessions) == 2
+        plogger.info.assert_called_once()
+
+    def test_no_jsonl_file_is_noop(self, tmp_path: Path):
+        from ralph_pipeline.cli import _recover_phase0_costs
+
+        state = PipelineState(
+            base_branch="main", current_milestone=1, milestones={}
+        )
+        plogger = MagicMock()
+
+        _recover_phase0_costs(state, tmp_path / "nonexistent.jsonl", plogger)
+
+        assert state.cost.total_usd == 0.0
+        plogger.info.assert_not_called()
+
+    def test_empty_jsonl_is_noop(self, tmp_path: Path):
+        from ralph_pipeline.cli import _recover_phase0_costs
+
+        jsonl = tmp_path / "pipeline.jsonl"
+        jsonl.write_text("")
+
+        state = PipelineState(
+            base_branch="main", current_milestone=1, milestones={}
+        )
+        plogger = MagicMock()
+
+        _recover_phase0_costs(state, jsonl, plogger)
+
+        assert state.cost.total_usd == 0.0
+        plogger.info.assert_not_called()

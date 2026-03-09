@@ -193,7 +193,7 @@ def get_logs(project_id):
 
     query = ExecutionLog.query.filter_by(project_id=project_id)
 
-    if milestone_id:
+    if milestone_id is not None:
         query = query.filter_by(milestone_id=milestone_id)
     if phase:
         query = query.filter_by(phase=phase)
@@ -225,7 +225,10 @@ def get_tokens(project_id):
             pass
 
     # Build a session_id → timestamp lookup from pipeline.jsonl
+    # Also collect claude_invocation entries as fallback if state.json
+    # sessions are empty (e.g., after state reinitialization on fresh run)
     ts_lookup: dict[str, str] = {}
+    jsonl_sessions: list[dict] = []
     if log_path.exists():
         try:
             with open(log_path, "r") as f:
@@ -238,13 +241,36 @@ def get_tokens(project_id):
                         if (
                             entry.get("event") == "claude_invocation"
                             and "session_id" in entry
-                            and "ts" in entry
                         ):
-                            ts_lookup[entry["session_id"]] = entry["ts"]
+                            if "ts" in entry:
+                                ts_lookup[entry["session_id"]] = entry["ts"]
+                            # Collect as fallback session data
+                            jsonl_sessions.append({
+                                "session_id": entry.get("session_id", ""),
+                                "phase": entry.get("phase", "unknown"),
+                                "milestone": entry.get("milestone", 0),
+                                "model": entry.get("model", "unknown"),
+                                "cost_usd": entry.get("cost_usd", 0.0),
+                                "input_tokens": entry.get("input_tokens", 0),
+                                "output_tokens": entry.get("output_tokens", 0),
+                                "cache_creation_tokens": entry.get("cache_creation_tokens", 0),
+                                "cache_read_tokens": entry.get("cache_read_tokens", 0),
+                                "invocations": entry.get("invocations", 1),
+                            })
                     except (json.JSONDecodeError, KeyError):
                         continue
         except OSError:
             pass
+
+    # Merge phase 0 entries from pipeline.jsonl that are not already in
+    # state.json sessions.  Phase 0 costs can be lost from state.json
+    # when the pipeline is restarted fresh (state re-initialized) after
+    # phase 0 already ran and consumed its config sections.
+    state_session_ids = {s.get("session_id") for s in sessions}
+    for js in jsonl_sessions:
+        if js.get("session_id") and js["session_id"] not in state_session_ids:
+            sessions.append(js)
+            state_session_ids.add(js["session_id"])
 
     # Aggregate from sessions
     _zero_bucket = lambda: {
@@ -559,6 +585,48 @@ def get_overview(project_id):
         except (json.JSONDecodeError, OSError):
             pass
 
+    # ── Recover phase 0 costs from pipeline.jsonl if missing from state ──
+    log_path = root / ".ralph" / "logs" / "pipeline.jsonl"
+    state_session_ids = {
+        s.get("session_id")
+        for s in state.get("cost", {}).get("sessions", [])
+    }
+    if log_path.exists():
+        try:
+            with open(log_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                    if (
+                        entry.get("event") != "claude_invocation"
+                        or entry.get("session_id") in state_session_ids
+                    ):
+                        continue
+                    sid = entry.get("session_id", "")
+                    if sid:
+                        state_session_ids.add(sid)
+                    entry_cost = entry.get("cost_usd", 0.0)
+                    cost_total += entry_cost
+                    mid = entry.get("milestone", 0)
+                    # Update by_milestone list
+                    existing = next((m for m in cost_by_milestone if m["id"] == mid), None)
+                    if existing:
+                        existing["cost_usd"] += entry_cost
+                    else:
+                        mid_name = (
+                            "Infrastructure Bootstrap" if mid == 0
+                            else next((m["name"] for m in config_milestones if m["id"] == mid), f"M{mid}")
+                        )
+                        cost_by_milestone.append({"id": mid, "name": mid_name, "cost_usd": entry_cost})
+                cost_by_milestone.sort(key=lambda x: x["id"])
+        except OSError:
+            pass
+
     # ── Compute progress (including Phase 0) ─────────────────────────────
     completed_milestones = sum(
         1 for ms in milestone_states.values() if ms.get("phase") == "complete"
@@ -624,8 +692,15 @@ def get_overview(project_id):
     # ── Pipeline running status ──────────────────────────────────────────
     running, lock_data = is_pipeline_running(project.root_path)
 
-    # Build per-milestone story counts + completion status
+    # Build per-milestone story counts + completion status (including Phase 0)
     milestone_details = []
+    if phase0_complete or state.get("phase0_started_at"):
+        milestone_details.append({
+            "id": 0,
+            "name": "Infrastructure Bootstrap",
+            "stories": 0,
+            "completed": phase0_complete,
+        })
     for m in config_milestones:
         mid = m["id"]
         ms_state = milestone_states.get(str(mid), {})
@@ -636,7 +711,7 @@ def get_overview(project_id):
             "completed": ms_state.get("phase") == "complete",
         })
 
-    # Cost by phase from state.json
+    # Cost by phase from state.json + pipeline.jsonl recovery
     cost_by_phase: dict = {}
     if state_path.exists():
         try:
@@ -648,6 +723,30 @@ def get_overview(project_id):
                 elif isinstance(ph_val, dict):
                     cost_by_phase[ph_key] = ph_val.get("cost_usd", 0.0)
         except (json.JSONDecodeError, OSError):
+            pass
+    # Merge missing phases from pipeline.jsonl (same session dedup set built above)
+    if log_path.exists():
+        try:
+            state_phase_sessions: set[str] = set()
+            for s in state.get("cost", {}).get("sessions", []):
+                state_phase_sessions.add(s.get("session_id", ""))
+            with open(log_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                    if entry.get("event") != "claude_invocation":
+                        continue
+                    sid = entry.get("session_id", "")
+                    if sid in state_phase_sessions:
+                        continue
+                    ph = entry.get("phase", "unknown")
+                    cost_by_phase[ph] = cost_by_phase.get(ph, 0.0) + entry.get("cost_usd", 0.0)
+        except OSError:
             pass
 
     return jsonify({
@@ -840,9 +939,6 @@ def get_test_analytics(project_id):
     )
 
     for mid in all_milestone_ids:
-        if mid == 0:
-            continue  # Skip phase 0
-
         ms_state = milestone_states.get(mid, {})
         ms_test_runs = [r for r in test_runs if r.get("milestone") == mid]
         ms_verdicts = [v for v in qa_verdicts if v.get("milestone") == mid]
