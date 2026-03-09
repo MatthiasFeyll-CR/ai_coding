@@ -44,6 +44,8 @@ export interface MilestoneInfo extends MilestoneState {
   slug: string;
   stories: number;
   dependencies: number[];
+  iteration_count?: number;
+  max_iterations?: number;
 }
 
 export interface MilestonesResponse {

@@ -45,7 +45,7 @@ If the context bundle exceeds limits **and** truncation cannot bring it under th
 
 ### 3. Domain-split may halt the pipeline before execution
 
-If the PRD Writer detects a multi-domain milestone, it produces `.ralph/domain-split-m{N}.md`. The pipeline raises `PhaseError` with a message to re-run Strategy Planner. The executor never runs.
+If the PRD Writer detects a multi-domain milestone, it produces `.ralph/domain-split-m{N}.md`. The pipeline raises `PhaseError` with a message to re-run Milestone Planner. The executor never runs.
 
 **Executor impact:** None for now. If future work adds domain-split detection at the executor level (e.g., Ralph identifies domain mixing during coding), it should write to the same `.ralph/domain-split-m{N}.md` path for consistency.
 
@@ -112,7 +112,7 @@ The pipeline logs warnings when these exceed thresholds (>30 files, >5 doc secti
 | `src/ralph_pipeline/phases/prd_generation.py` | Modified | Runs validation before executor — executor receives pre-validated bundle |
 | `src/ralph_pipeline/milestone_schema.py` | Existing | `context_weight` metrics available via `validate_milestone_scope()` |
 | `src/ralph_pipeline/data/skills/prd_writer/SKILL.md` | Modified | PRD Writer now produces inline `context` per story in prd.json |
-| `src/ralph_pipeline/data/skills/strategy_planner/SKILL.md` | Modified | Stronger domain-cohesion rule reduces multi-domain milestones |
+| `src/ralph_pipeline/data/skills/milestone_planner/SKILL.md` | Modified | Stronger domain-cohesion rule reduces multi-domain milestones |
 | `tests/test_context_validator.py` | **New** | 20 tests covering all validation paths |
 
 ---

@@ -99,10 +99,10 @@ const STATUS_COLORS: Record<PhaseStatus, { bg: string; border: string; text: str
     dot: '#10b981',
   },
   active: {
-    bg: 'bg-accent-cyan/10',
-    border: 'border-accent-cyan/60',
-    text: 'text-accent-cyan',
-    dot: '#06b6d4',
+    bg: 'bg-accent-blue/10',
+    border: 'border-accent-blue/60',
+    text: 'text-accent-blue',
+    dot: '#3b82f6',
   },
   paused: {
     bg: 'bg-text-muted/10',
@@ -175,7 +175,7 @@ function StraightArrow({ from, to, status, nodeWidth, gapX, nodeHeight, offsetY,
     status === 'completed'
       ? '#10b981'
       : status === 'active'
-      ? '#06b6d4'
+      ? '#3b82f6'
       : '#374151';
 
   return (
@@ -468,7 +468,7 @@ export function PhaseFSM({
                     'relative flex flex-col items-center justify-center rounded-lg border-2 transition-all',
                     colors.bg,
                     colors.border,
-                    isActive && 'shadow-glow-cyan'
+                    isActive && 'shadow-glow-blue'
                   )}
                   style={{
                     width: NODE_W,
@@ -479,9 +479,9 @@ export function PhaseFSM({
                     isActive
                       ? {
                           boxShadow: [
-                            '0 0 8px rgba(6, 182, 212, 0.2)',
-                            '0 0 16px rgba(6, 182, 212, 0.4)',
-                            '0 0 8px rgba(6, 182, 212, 0.2)',
+                            '0 0 8px rgba(59, 130, 246, 0.2)',
+                            '0 0 16px rgba(59, 130, 246, 0.4)',
+                            '0 0 8px rgba(59, 130, 246, 0.2)',
                           ],
                           transition: { duration: 2, repeat: Infinity },
                         }
@@ -499,6 +499,12 @@ export function PhaseFSM({
                       {phase.label}
                     </span>
                   </div>
+                  {/* Iteration counter for ralph_execution */}
+                  {phase.id === 'ralph_execution' && (milestone.iteration_count ?? 0) > 0 && (
+                    <span className={clsx('text-[9px] font-mono mt-0.5', colors.text, 'opacity-80')}>
+                      {milestone.iteration_count} of {milestone.max_iterations ?? '?'}
+                    </span>
+                  )}
                 </motion.div>
               );
             })}

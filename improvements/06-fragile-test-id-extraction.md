@@ -86,7 +86,7 @@ This assumes Ralph names tests or includes comments matching the exact ID or a n
 
 The full chain is:
 1. Test Architect → writes `T-1.1` in `test-matrix.md` (structured)
-2. Strategy Planner → assigns test IDs to milestones (prose)
+2. Milestone Planner → assigns test IDs to milestones (prose)
 3. PRD Writer → embeds test IDs in story notes (AI-generated text)
 4. Ralph → names tests referencing the ID (AI-generated code)
 5. Pipeline → regex-extracts from notes, grep-searches in code (heuristic)

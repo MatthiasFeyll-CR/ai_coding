@@ -49,10 +49,10 @@ After PRD generation: validates context bundle size, surfaces milestone-scope `c
 
 - Section priority documentation for truncation awareness
 - Inline story context in `prd.json` (`context` object per story with verbatim upstream references)
-- Multi-domain detection (Section 8b): generates `.ralph/domain-split-m{N}.md` to pause the pipeline for Strategy Planner re-planning
+- Multi-domain detection (Section 8b): generates `.ralph/domain-split-m{N}.md` to pause the pipeline for Milestone Planner re-planning
 - Context weight reporting updated with pipeline-enforced limits awareness
 
-### 5. Strategy Planner SKILL.md updates
+### 5. Milestone Planner SKILL.md updates
 
 - Rule 8 strengthened: "one domain per milestone"
 - Rule 11 added: domain-split re-planning from PRD Writer recommendations
@@ -67,5 +67,5 @@ After PRD generation: validates context bundle size, surfaces milestone-scope `c
 | `src/ralph_pipeline/context_validator.py` | **New** — measurement, truncation, validation |
 | `src/ralph_pipeline/phases/prd_generation.py` | Context validation + domain-split detection |
 | `src/ralph_pipeline/data/skills/prd_writer/SKILL.md` | Section priority, inline context, domain detection |
-| `src/ralph_pipeline/data/skills/strategy_planner/SKILL.md` | Domain cohesion + re-planning rules |
+| `src/ralph_pipeline/data/skills/milestone_planner/SKILL.md` | Domain cohesion + re-planning rules |
 | `tests/test_context_validator.py` | **New** — 20 tests |

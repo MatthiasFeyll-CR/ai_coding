@@ -26,13 +26,13 @@ You make all **technical HOW decisions**. You do NOT write code, user stories, o
 [3c]  Arch+AI Integrator      →  docs/03-integration/
 [4]   Spec QA                 →  docs/04-spec-qa/
 [4b]  Test Architect          →  docs/04-test-architecture/
-[5]   Strategy Planner        →  docs/05-milestones/
+[5]   Milestone Planner       →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 [7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
 
 **Your input:** Read ALL files in `docs/01-requirements/` before starting.
-**Your output:** `docs/02-architecture/` — consumed by the UI/UX Designer, Spec QA, and Strategy Planner.
+**Your output:** `docs/02-architecture/` — consumed by the UI/UX Designer, Spec QA, and Milestone Planner.
 
 ---
 
@@ -365,7 +365,7 @@ project-root/
 | [e.g., Shared Components] | [src/components/ui/] | [button.tsx, input.tsx, ...] | [Cross-cutting] |
 | [e.g., Database] | [src/lib/db/] | [schema.ts, migrations/] | [Cross-cutting] |
 
-This mapping helps the Strategy Planner scope milestones and helps Ralph know where to create/modify files.
+This mapping helps the Milestone Planner scope milestones and helps Ralph know where to create/modify files.
 
 ## Key Decisions
 - [Decision 1: Why we chose pattern X over Y]

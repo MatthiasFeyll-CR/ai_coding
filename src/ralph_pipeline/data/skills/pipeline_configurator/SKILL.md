@@ -1,6 +1,6 @@
 ---
 name: pipeline_configurator
-description: "Pipeline Configurator — the final planning step before automated execution. Reads the strategy planner output and produces pipeline-config.json and Ralph agent instructions. After this step, 'ralph-pipeline run --config pipeline-config.json' runs the entire project unattended. Triggers on: pipeline configurator, configure pipeline, setup pipeline, prepare pipeline, generate config."
+description: "Pipeline Configurator — the final planning step before automated execution. Reads the milestone planner output and produces pipeline-config.json and Ralph agent instructions. After this step, 'ralph-pipeline run --config pipeline-config.json' runs the entire project unattended. Triggers on: pipeline configurator, configure pipeline, setup pipeline, prepare pipeline, generate config."
 user-invocable: true
 ---
 
@@ -10,7 +10,7 @@ You are specialist **[6] Pipeline Configurator** in the development pipeline.
 
 ## 1. Purpose
 
-You are the final step before fully automated execution. Your goal is to read the Strategy Planner's output and produce everything the `ralph-pipeline` tool needs to build the entire project unattended:
+You are the final step before fully automated execution. Your goal is to read the Milestone Planner's output and produce everything the `ralph-pipeline` tool needs to build the entire project unattended:
 
 1. **`pipeline-config.json`** — Machine-readable project config (milestones, gate checks, paths, declarative infrastructure specs)
 2. **`.ralph/CLAUDE.md`** — Ralph agent workflow instructions (process-only — no project-specific commands)
@@ -32,13 +32,13 @@ After this step, the user runs `ralph-pipeline run --config pipeline-config.json
 [3c]  Arch+AI Integrator      →  docs/03-integration/
 [4]   Spec QA                 →  docs/04-spec-qa/
 [4b]  Test Architect          →  docs/04-test-architecture/
-[5]   Strategy Planner        →  docs/05-milestones/
+[5]   Milestone Planner       →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json     ← YOU ARE HERE
 [7]   Pipeline Execution      →  ralph-pipeline run (automated)
       [7a] Phase 0            →  Infrastructure Bootstrap (once, before milestone loop)
 ```
 
-**Your input:** Strategy Planner handover (`docs/05-milestones/handover.json`) + all upstream docs.
+**Your input:** Milestone Planner handover (`docs/05-milestones/handover.json`) + all upstream docs.
 **Your output:** `pipeline-config.json` + `.ralph/CLAUDE.md`
 
 ---
@@ -240,15 +240,6 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
 2. **models:** Controls which Claude model is used for each pipeline phase. Available models:
    - `claude-opus-4-6` — strongest reasoning, use for complex code generation and debugging
    - `claude-sonnet-4-5` — fast and cost-effective, use for structured/checklist tasks
-
-   **Always use cost optimization.** Do NOT ask the user whether to optimize costs or use maximum quality. Always use these exact assignments:
-   - `ralph`: `"claude-opus-4-6"` (complex code generation needs the strongest model)
-   - `phase0`: `"claude-sonnet-4-5"` (scaffolding and test infra generation)
-   - `prd_generation`: `"claude-sonnet-4-5"` (structured extraction from specs)
-   - `qa_review`: `"claude-sonnet-4-5"` (comparing code against checklist)
-   - `test_fix`: `"claude-opus-4-6"` (debugging test failures needs strong reasoning)
-   - `gate_fix`: `"claude-opus-4-6"` (debugging regressions)
-   - `reconciliation`: `"claude-sonnet-4-5"` (diffing changes against specs)
 3. **gate_checks:** Determine from `tech-stack.md`:
    - If Docker Compose exists → add Docker build check
    - If frontend is TypeScript → add tsc check
@@ -290,87 +281,42 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
 
 ### 4.2 .ralph/CLAUDE.md
 
-Ralph agent instructions — **process-only**. This file defines HOW Ralph works (workflow, rules, progress format), NOT WHAT the project is or how to test it.
+> **NOTE:** CLAUDE.md is now **pipeline-managed**. The pipeline writes it
+> automatically during Phase 2 setup (`_write_claude_md`). You do NOT need
+> to generate or include it. The pipeline owns the content and injects
+> runtime quality commands and bugfix notices on top.
 
-Project-specific content (quality check commands, test infrastructure setup, browser testing instructions) lives in `.ralph/context.md`, which the PRD Writer generates fresh for each milestone with actual, verified commands.
+Ralph agent instructions — **process-only, per-story execution**. Each pipeline
+iteration gives Ralph ONE story to implement in a fresh Claude session, keeping
+the context window lean.
 
-**What CLAUDE.md contains:**
+**What the pipeline-generated CLAUDE.md contains:**
 
-1. **Task workflow** — how Ralph reads the PRD, picks stories, implements, commits
-2. **Progress report format** — structured format Ralph uses to report status
-3. **Stop condition** — `<promise>COMPLETE</promise>` terminal signal
-4. **Self-protection note** — "Do NOT modify .ralph/CLAUDE.md"
-5. **Patterns consolidation** — instructions to update Codebase Patterns in progress.txt
-6. **Context bundle reference** — instruction to read `.ralph/context.md` for project-specific commands before starting each story
+1. **Task workflow** — read PRD, pick ONE `passes: false` story, implement, commit, signal COMPLETE
+2. **Progress report format** — structured format Ralph uses to report per-story status
+3. **Stop condition** — `<promise>COMPLETE</promise>` after each story (pipeline handles the loop)
+4. **Permitted file modifications** — source code freely, progress.txt append-only, prd.json passes field only
+5. **Context bundle reference** — instruction to read `.ralph/context.md` before starting
 
 **What CLAUDE.md does NOT contain:**
 
-- No quality check commands (these depend on test infrastructure that Phase 0 creates → go in context.md)
+- No quality check commands (injected by the pipeline as a runtime footer from pipeline-config.json)
 - No project-specific test setup/teardown instructions (go in context.md)
 - No browser testing instructions (go in context.md)
 - No technology-specific references
+- No internal loop — the pipeline controls iteration
 
-**Template structure:**
-
-```markdown
-# CLAUDE.md — Ralph Agent Instructions
-
-> This file defines your workflow. For project-specific commands and test instructions,
-> read `.ralph/context.md` before starting each story.
-
-## Task Workflow
-
-1. Read `.ralph/prd.json` to find stories with `"passes": false`.
-2. Read `.ralph/context.md` for project-specific commands, test setup, and codebase patterns.
-3. Pick the highest-priority incomplete story.
-4. Implement the story, following architecture and design references in the notes field.
-5. Run ALL quality checks listed in `.ralph/context.md`. Fix failures before committing.
-6. Commit with message: `feat(mN): US-XXX — [story title]`
-7. Update `.ralph/progress.txt` with structured status.
-8. Repeat from step 1.
-
-## Progress Report Format
-
-After each story (pass or fail), append to `.ralph/progress.txt`:
-
-\`\`\`
-## US-XXX: [Title]
-- Status: PASS | FAIL
-- Attempts: N
-- Changes: [files modified]
-- Tests: [test results summary]
-- Deviations: [any spec deviations, or "none"]
-\`\`\`
-
-After ALL stories are done (or max iterations reached), write:
-
-\`\`\`
-## Codebase Patterns
-- [Pattern 1]: [description — e.g., "All API routes use /api/v1 prefix"]
-- [Pattern 2]: [description]
-\`\`\`
-
-## Stop Condition
-
-When all stories pass or you've exhausted iterations:
-
-<promise>COMPLETE</promise>
-
-## Self-Protection
-
-Do NOT modify `.ralph/CLAUDE.md` or `.ralph/prd.json`. These are pipeline-managed files.
-You may only modify `.ralph/progress.txt` (append-only).
-```
+**You do NOT write this file.** Remove `.ralph/CLAUDE.md` from your `files_produced` list.
 
 **Generation instructions:**
-- Write this template to `.ralph/CLAUDE.md` with minimal customization.
-- Replace `[Project Name]` in the header comment with the actual project name (optional).
-- Do NOT add any project-specific commands, test instructions, or technology references.
-- The PRD Writer will handle all project-specific content via `.ralph/context.md`.
+- Do NOT generate `.ralph/CLAUDE.md`. The pipeline writes it automatically.
+- If the file already exists from a previous run, the pipeline will overwrite it.
 
 ## 5. Verification
 
-Before finalizing, verify:
+Before finalizing, perform three verification passes: structural integrity (5.1), model feasibility (5.2), and context completeness (5.3).
+
+### 5.1 Structural Verification
 
 1. **JSON validity:** Parse `pipeline-config.json` with `python3 -c "import json; json.load(open('pipeline-config.json'))"`.
 2. **Dependencies valid:** Every milestone's dependencies reference existing milestone IDs.
@@ -383,7 +329,162 @@ Before finalizing, verify:
    - Database entries reference existing services by name.
    - Services cover ALL milestones (cross-check against milestone scope files).
 7. **Scaffolding sources exist:** Verify that `scaffolding.project_structure_doc` and `scaffolding.tech_stack_doc` point to files that actually exist.
-8. **CLAUDE.md is process-only:** Verify `.ralph/CLAUDE.md` contains NO project-specific commands, test instructions, or technology references. It should only contain workflow rules and the reference to read `context.md`.
+8. **CLAUDE.md is pipeline-managed:** Do NOT generate `.ralph/CLAUDE.md`. The pipeline writes it automatically. If a manually-created one exists, the pipeline will overwrite it.
+
+### 5.2 Model Feasibility Verification
+
+For each milestone and its user stories, verify that the assigned model can realistically handle the work. The models configured in `pipeline-config.json` → `models` determine what's possible.
+
+#### Model Capabilities Reference
+
+| Model | Context Window | Effective Reasoning Limit | Best For | Cost Tier |
+|---|---|---|---|---|
+| `claude-opus-4-6` | 200k tokens | ~120k tokens loaded context | Complex multi-file coding, debugging, architecture decisions | High |
+| `claude-sonnet-4-5` | 200k tokens | ~100k tokens loaded context | Structured/checklist tasks, PRD generation, QA review, reconciliation | Medium |
+
+#### Per-Milestone Feasibility Check
+
+For each milestone, read the corresponding `docs/05-milestones/milestone-N.md` scope file and assess:
+
+1. **Context budget per story:**
+   - The model assigned in `models.ralph` is what executes each story
+   - Estimate the total context the agent will need: PRD (~2k tokens) + context bundle (architecture summary + prior milestone context + codebase snapshot) + the story's own spec references
+   - For milestones after M1: factor in the **codebase snapshot** — the PRD Writer includes a summary of all files from prior milestones. This grows with each milestone.
+   - **Rule of thumb for codebase growth:**
+     - After M1: ~5k-15k tokens of codebase context
+     - After M3: ~15k-40k tokens
+     - After M6: ~40k-80k tokens
+     - After M8+: ~80k-120k tokens (approaching model limits)
+   - If estimated total context > model's effective reasoning limit, **flag the milestone**
+
+2. **Story complexity vs model capability:**
+   - Read the "Per-Story Complexity Assessment" table from the milestone scope file (if present, added by the Milestone Planner)
+   - Stories rated "High" complexity need `claude-opus-4-6` as the ralph model
+   - If `models.ralph` is set to `claude-sonnet-4-5` but the milestone contains High-complexity stories, **flag this as a model mismatch**
+
+3. **Phase-specific model checks:**
+   - `models.prd_generation` (Phase 1): Must handle reading all upstream docs + milestone scope file. For large projects with >50 pages of specs, recommend `claude-opus-4-6`.
+   - `models.qa_review` (Phase 3): Must analyze test output + codebase + PRD. For milestones with >8 stories, recommend `claude-opus-4-6`.
+   - `models.test_fix` / `models.gate_fix`: Must understand failing test context + relevant source code. Projects with complex test setups (Docker, multiple services) should use `claude-opus-4-6`.
+
+#### Feasibility Report
+
+Produce a feasibility assessment for each milestone:
+
+```
+Model Feasibility Report
+=========================
+
+Config: ralph=claude-opus-4-6, prd=claude-sonnet-4-5, qa=claude-sonnet-4-5
+
+M1: Foundation (11 stories)
+  Ralph context estimate: PRD(2k) + bundle(8k) + codebase(0k) = ~10k tokens
+  Model: claude-opus-4-6 (120k limit) → 8% utilization ✅
+  Heavy stories: 0 ✅
+
+M5: Board Agent & Background AI (8 stories)
+  Ralph context estimate: PRD(2k) + bundle(25k) + codebase(55k) = ~82k tokens
+  Model: claude-opus-4-6 (120k limit) → 68% utilization ✅
+  Heavy stories: 2 (AI agent integration + background pipeline) ✅
+  Note: Approaching upper comfort zone. Monitor QA pass rates.
+
+M9: Company Context & RAG (9 stories) ⚠️
+  Ralph context estimate: PRD(2k) + bundle(30k) + codebase(95k) = ~127k tokens
+  Model: claude-opus-4-6 (120k limit) → 106% utilization ⚠️ OVER LIMIT
+  Heavy stories: 4 (RAG pipeline, embeddings, vector search, context agent)
+  
+  CONCERN: Codebase snapshot at M9 likely exceeds model's effective reasoning limit.
+  Options:
+    a) Split M9 into two smaller milestones (reduces per-story context needs)
+    b) Increase context pruning aggressiveness in PRD Writer config
+    c) Accept risk (model may produce lower-quality code for complex stories)
+```
+
+**If any milestone is flagged:** Present **each** concern as a numbered item to the user and let them decide:
+- Accept the risk (proceed as-is)
+- Split the milestone (go back to Milestone Planner)
+- Change the model assignment for that phase
+- Adjust context limits
+
+**Do NOT silently accept over-limit milestones.** The user must explicitly acknowledge every concern.
+
+### 5.3 Context Completeness Verification
+
+Verify that all information the pipeline needs is in place before execution begins. Missing context causes silent failures during automated phases.
+
+#### Information Checklist
+
+For each milestone, verify these information sources exist and are complete:
+
+| Required Information | Source | Check |
+|---|---|---|
+| Milestone scope file | `docs/05-milestones/milestone-N.md` | File exists, has all required sections (Overview, Features, Data Model, API, Story Outline) |
+| Requirements traceability | Scope file → `docs/01-requirements/` | Every Feature ID in scope file exists in requirements |
+| Architecture references | Scope file → `docs/02-architecture/` | Every table/endpoint/component reference resolves to an actual spec section |
+| Design references | Scope file → `docs/03-design/` | Every page/component reference has a corresponding design spec |
+| Test references | Scope file → `docs/04-test-architecture/` | If test architecture exists, test IDs referenced in stories map to the test matrix |
+| AI agent references | Scope file → `docs/03-ai/` | If AI agents referenced, agent specs exist with tool definitions, prompt templates |
+| Dependency artifacts | Prior milestones | For M2+: verify that M1's scope file produces all artifacts M2 depends on |
+
+#### Gap Remediation
+
+**If information is missing but can be inferred:**
+1. Determine the correct information from the upstream docs
+2. Add the missing content to the relevant milestone scope file (`docs/05-milestones/milestone-N.md`)
+3. Document what was added and why in the handover
+4. Inform the user: "I added [X] to milestone-N.md because [reason]. This information was present in [upstream doc] but missing from the scope file."
+
+**If information is genuinely missing (not in any upstream doc):**
+1. Do NOT fabricate information
+2. List the gap clearly: "Milestone N, Story X references [Y] but no specification exists for it in any upstream document"
+3. Ask the user to provide the missing information or confirm it should be removed from scope
+
+#### Scope File Modifications
+
+When the Pipeline Configurator modifies milestone scope files, it must:
+1. Add a section at the bottom: `## Pipeline Configurator Amendments`
+2. List every change with justification
+3. Never modify the original story outline or acceptance criteria — only add missing context
+
+```markdown
+## Pipeline Configurator Amendments
+
+> Added by Pipeline Configurator during context completeness verification.
+
+### Added References
+- Added `admin_parameters` table to Data Model References — referenced in Story 3 (admin panel setup) but missing from scope file. Source: `docs/02-architecture/data-model.md` section 4.2.
+- Added `GET /api/admin/params` endpoint to API References — required by Story 3 but not listed. Source: `docs/02-architecture/api-design.md` section 3.8.
+
+### Concerns Raised
+- Story 7 references "PDF template customization" but no template format is specified in design docs or architecture docs. User confirmed: use HTML-to-PDF with predefined layout.
+```
+
+### 5.4 Consolidated Verification Report
+
+After all three verification passes, present a consolidated report to the user:
+
+```
+Pipeline Configuration Verification
+=====================================
+
+1. Structural Integrity: ✅ PASS
+   - JSON valid, dependencies clean, infrastructure complete
+
+2. Model Feasibility: ⚠️ 2 CONCERNS
+   Concern 1: M9 context estimate (127k) exceeds claude-opus-4-6 effective limit (120k)
+     → [User decides: accept / split / change model]
+   Concern 2: M11 has 4 High-complexity stories with claude-opus-4-6
+     → [User decides: accept / split stories]
+
+3. Context Completeness: ✅ PASS (2 amendments made)
+   - Added 3 missing references to milestone-4.md (auto-resolved from upstream docs)
+   - Added 1 missing reference to milestone-7.md (auto-resolved from upstream docs)
+   - No unresolvable gaps
+
+Ready to generate final pipeline-config.json? [Y/n]
+```
+
+**The pipeline-config.json is NOT finalized until the user has responded to every concern.** If the user requests milestone splits, inform them to re-run the Milestone Planner for the affected milestones, then return to the Pipeline Configurator.
 
 ---
 
@@ -400,11 +501,18 @@ After config is generated and verified:
   "from": "pipeline_configurator",
   "to": "pipeline_execution",
   "timestamp": "[ISO timestamp]",
-  "summary": "Pipeline configured. [N] milestones, sequential execution. Phase 0 pending for infrastructure bootstrap. Config at pipeline-config.json.",
+  "summary": "Pipeline configured. [N] milestones, sequential execution. Phase 0 pending for infrastructure bootstrap. Config at pipeline-config.json. Verification: structural=PASS, model_feasibility=[PASS/N_CONCERNS_RESOLVED], context_completeness=[PASS/N_AMENDMENTS].",
   "files_produced": [
-    "pipeline-config.json",
-    ".ralph/CLAUDE.md"
+    "pipeline-config.json"
   ],
+  "verification_summary": {
+    "structural": "pass",
+    "model_feasibility": "pass",
+    "model_concerns_resolved": [],
+    "context_completeness": "pass",
+    "amendments_made": [],
+    "user_decisions": []
+  },
   "phase0_pending": true,
   "phase0_description": "Phase 0 runs once before the milestone loop to create project scaffolding (directory structure, framework boilerplate) and test infrastructure (docker-compose.test.yml, Dockerfiles) from the declarative specs in pipeline-config.json. After Phase 0 completes, the config's test_infrastructure section is replaced with concrete test_execution commands.",
   "next_commands": [
@@ -443,7 +551,7 @@ After config is generated and verified:
 2. **Declare WHAT, not HOW.** The `test_infrastructure` and `scaffolding` sections describe needs, not commands. Phase 0 converts declarations to concrete files and commands. Never generate shell commands for test setup, teardown, or execution.
 3. **Scan ALL milestone scopes.** Read every `docs/05-milestones/milestone-*.md` file to enumerate the full set of services and runtimes. A service mentioned only in M4 must still appear in `test_infrastructure.services` — Phase 0 creates infrastructure for the entire project lifecycle upfront.
 4. **Extract database names explicitly.** Check test settings files (Django `settings/test.py`, etc.), test architecture docs, and environment variables to find actual test database names. Wrong DB names cause silent failures.
-5. **CLAUDE.md is process-only.** It contains workflow rules and a pointer to `context.md`. No quality check commands, no test instructions, no technology references. Project-specific content goes in `.ralph/context.md` (generated per milestone by the PRD Writer).
+5. **CLAUDE.md is pipeline-managed.** Do NOT generate `.ralph/CLAUDE.md`. The pipeline writes it automatically during Phase 2 setup with per-story execution instructions. Project-specific content goes in `.ralph/context.md` (generated per milestone by the PRD Writer).
 6. **env_setup is always null.** The `.env` file handles all environment configuration (ports, access tokens, Azure credentials). Never ask the user about shell setup scripts.
 7. **Gate checks must be realistic.** Don't add gate checks for tools that aren't in the project's tech stack.
 8. **Validate before saving.** Always run the verification checklist (Section 5).
@@ -455,6 +563,6 @@ After config is generated and verified:
 
 > I'm your Pipeline Configurator. I'll translate the milestone strategy into a machine-readable config so `ralph-pipeline` can run the entire build automatically.
 >
-> Let me read the Strategy Planner's handover.
+> Let me read the Milestone Planner's handover.
 >
 > [Read handover.json, then show config summary for approval]

@@ -209,7 +209,7 @@ export function TestAnalytics({ projectId }: TestAnalyticsProps) {
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="bg-bg-secondary/70 backdrop-blur-sm border border-border-subtle rounded-2xl px-10 py-8 flex flex-col items-center text-center shadow-xl max-w-md">
             <BeakerIcon className="w-10 h-10 text-text-muted mb-3 opacity-60" />
-            <h3 className="text-base font-semibold text-text-primary mb-1">No Test Data Yet</h3>
+            <h3 className="text-base font-semibold text-text-primary mb-1">No Test Data Available</h3>
             <p className="text-text-muted text-sm leading-relaxed">
               Test analytics will appear here once the pipeline runs QA phases.
               Data is collected from pipeline event logs and QA result files.

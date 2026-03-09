@@ -8,7 +8,7 @@ Without structured context, each Ralph iteration wastes tokens exploring docs. W
 
 ### Layer 1 — Planning (Context Weight Sizing)
 
-The Strategy Planner computes per-milestone context weight:
+The Milestone Planner computes per-milestone context weight:
 - Unique file paths (threshold: >30)
 - Doc sections (threshold: >5)
 - Story count (threshold: >10)

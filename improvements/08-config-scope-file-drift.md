@@ -28,7 +28,7 @@ Ralph Pipeline uses two separate artifacts to define milestones:
 
 2. **`docs/05-milestones/milestone-N.md`** — human-readable scope file with full feature descriptions, story outlines, architecture references, test IDs, and acceptance criteria.
 
-These two artifacts are produced by different steps (Pipeline Configurator writes config, Strategy Planner writes scope files) and are never cross-validated.
+These two artifacts are produced by different steps (Pipeline Configurator writes config, Milestone Planner writes scope files) and are never cross-validated.
 
 ---
 
@@ -48,7 +48,7 @@ With default `max_iterations_multiplier = 3`, a milestone with `stories: 5` gets
 1. **Post-planning edits:** User or AI edits `milestone-N.md` to add/remove stories without updating `pipeline-config.json`
 2. **PRD Writer generates more stories:** The PRD Writer reads `milestone-N.md` and breaks features into more stories than the scope file outlined (right-sizing for Ralph iterations)
 3. **Reconciliation adds scope:** After milestone N, spec reconciliation may update scope files for milestone N+1 without touching the config
-4. **Strategy Planner counts differently:** The "story outline" in milestone-N.md might list 7 bullets but the Strategy Planner told the Configurator "5 stories" because some bullets are sub-tasks
+4. **Milestone Planner counts differently:** The "story outline" in milestone-N.md might list 7 bullets but the Milestone Planner told the Configurator "5 stories" because some bullets are sub-tasks
 
 ### What the config knows about milestones
 
@@ -81,7 +81,7 @@ There is no code that:
 |------|------|
 | `src/ralph_pipeline/config.py` | `MilestoneConfig` — `stories` field controls iteration budget |
 | `src/ralph_pipeline/phases/ralph_execution.py` | `max_iter = milestone.stories * multiplier` |
-| `src/ralph_pipeline/data/skills/strategy_planner/SKILL.md` | Produces milestone scope files |
+| `src/ralph_pipeline/data/skills/milestone_planner/SKILL.md` | Produces milestone scope files |
 | `src/ralph_pipeline/data/skills/pipeline_configurator/SKILL.md` | Produces pipeline-config.json from strategy handover |
 | `src/ralph_pipeline/runner.py` | Main loop iterates over `config.milestones` |
 

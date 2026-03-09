@@ -399,7 +399,8 @@ def get_milestones(project_id):
             pass
 
     # Determine Phase 0 status from state.json cost data and phase0-verification.json
-    phase0_entry = _build_phase0_entry(state_path, phase0_path)
+    log_path = Path(project.root_path) / ".ralph" / "logs" / "pipeline.jsonl"
+    phase0_entry = _build_phase0_entry(state_path, phase0_path, log_path=log_path)
 
     if not state_path.exists():
         # Return config-only milestones if no state yet
@@ -427,7 +428,7 @@ def get_milestones(project_id):
         state = json.load(f)
 
     # Update phase0 entry with state data if available
-    phase0_entry = _build_phase0_entry(state_path, phase0_path, state)
+    phase0_entry = _build_phase0_entry(state_path, phase0_path, state, log_path=log_path)
 
     milestones = [phase0_entry]
     for m_id, m_state in state.get("milestones", {}).items():
@@ -447,11 +448,46 @@ def get_milestones(project_id):
     # Sort by id (phase 0 comes first)
     milestones.sort(key=lambda m: m["id"])
 
+    # ── Enrich with iteration counts from ralph-iter-*.log files ─────
+    logs_dir = Path(project.root_path) / ".ralph" / "logs"
+    max_iter_multiplier = 3  # default
+    if config_path.exists():
+        try:
+            with open(config_path, "r") as f:
+                _cfg = json.load(f)
+            max_iter_multiplier = _cfg.get("ralph", {}).get("max_iterations_multiplier", 3)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    for m in milestones:
+        mid = m["id"]
+        if mid == 0:
+            m["iteration_count"] = 0
+            m["max_iterations"] = 0
+            continue
+        slug = m.get("slug", f"m{mid}")
+        dir_name = f"m{mid}-{slug}" if slug else f"m{mid}"
+        m_log_dir = logs_dir / dir_name
+        if m_log_dir.is_dir():
+            iter_files = sorted(m_log_dir.glob("ralph-iter-*.log"))
+            m["iteration_count"] = len(iter_files)
+        else:
+            m["iteration_count"] = 0
+        stories = m.get("stories", 0) or 1
+        m["max_iterations"] = stories * max_iter_multiplier
+
     return jsonify({"milestones": milestones, "max_bugfix_cycles": max_bugfix_cycles})
 
 
-def _build_phase0_entry(state_path, phase0_path, state=None):
-    """Build Phase 0 (Build Infrastructure) milestone entry."""
+def _build_phase0_entry(state_path, phase0_path, state=None, log_path=None):
+    """Build Phase 0 (Build Infrastructure) milestone entry.
+
+    Checks multiple sources in order:
+    1. phase0-verification.json for completion status
+    2. state.json for explicit timestamps and cost.by_phase keys
+    3. pipeline.jsonl for phase0 claude_invocation events (fallback
+       when state.json was re-initialized after phase0 already ran)
+    """
     phase0 = {
         "id": 0,
         "name": "Build Infrastructure",
@@ -489,26 +525,55 @@ def _build_phase0_entry(state_path, phase0_path, state=None):
         if state.get("phase0_complete"):
             phase0["phase"] = "complete"
 
-        cost = state.get("cost", {})
-        by_milestone = cost.get("by_milestone", {})
-        if "0" in by_milestone or 0 in by_milestone:
-            # Phase 0 has cost data, meaning it started
-            if not phase0["started_at"]:
-                phase0["started_at"] = phase0.get("completed_at")
+    # Determine sub-phase from cost data (state.json + pipeline.jsonl)
+    if phase0["phase"] != "complete":
+        phase0_phases_found: set[str] = set()
+        first_ts: str | None = None
 
-            # Determine current sub-phase if not complete
-            if phase0["phase"] != "complete":
-                by_phase = cost.get("by_phase", {})
-                if "phase0_lifecycle" in by_phase:
-                    phase0["phase"] = "phase0_lifecycle"
-                elif "phase0_test_infra" in by_phase:
-                    phase0["phase"] = "phase0_test_infra"
-                elif "phase0_scaffolding" in by_phase:
-                    phase0["phase"] = "phase0_scaffolding"
-                else:
-                    phase0["phase"] = "phase0_scaffolding"
-                if not phase0["started_at"]:
-                    phase0["started_at"] = phase0["completed_at"] or "unknown"
+        # Try state.json cost.by_phase first
+        if state:
+            cost = state.get("cost", {})
+            by_phase = cost.get("by_phase", {})
+            for key in ("phase0_scaffolding", "phase0_test_infra", "phase0_lifecycle"):
+                if key in by_phase:
+                    phase0_phases_found.add(key)
+            by_milestone = cost.get("by_milestone", {})
+            if ("0" in by_milestone or 0 in by_milestone) and not phase0["started_at"]:
+                phase0["started_at"] = phase0.get("completed_at") or "unknown"
+
+        # Fallback: parse pipeline.jsonl for phase0 invocations
+        if not phase0_phases_found and log_path and log_path.exists():
+            try:
+                with open(log_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+                        if entry.get("event") != "claude_invocation":
+                            continue
+                        phase = entry.get("phase", "")
+                        if phase.startswith("phase0_"):
+                            phase0_phases_found.add(phase)
+                            ts = entry.get("ts")
+                            if ts and not first_ts:
+                                first_ts = ts
+            except OSError:
+                pass
+
+        # Set current sub-phase based on what we found
+        if phase0_phases_found:
+            if "phase0_lifecycle" in phase0_phases_found:
+                phase0["phase"] = "phase0_lifecycle"
+            elif "phase0_test_infra" in phase0_phases_found:
+                phase0["phase"] = "phase0_test_infra"
+            elif "phase0_scaffolding" in phase0_phases_found:
+                phase0["phase"] = "phase0_scaffolding"
+            if not phase0["started_at"]:
+                phase0["started_at"] = first_ts or phase0["completed_at"] or "unknown"
 
     return phase0
 
@@ -700,6 +765,8 @@ def get_overview(project_id):
             "name": "Infrastructure Bootstrap",
             "stories": 0,
             "completed": phase0_complete,
+            "started_at": state.get("phase0_started_at"),
+            "completed_at": state.get("phase0_completed_at"),
         })
     for m in config_milestones:
         mid = m["id"]
@@ -709,6 +776,8 @@ def get_overview(project_id):
             "name": m["name"],
             "stories": m.get("stories", 0),
             "completed": ms_state.get("phase") == "complete",
+            "started_at": ms_state.get("started_at"),
+            "completed_at": ms_state.get("completed_at"),
         })
 
     # Cost by phase from state.json + pipeline.jsonl recovery
@@ -785,6 +854,7 @@ def get_overview(project_id):
             "running": running,
             "status": project.status,
             "lock": lock_data,
+            "started_at": lock_data.get("started_at") if running else state.get("phase0_started_at"),
         },
         "milestone_details": milestone_details,
     })

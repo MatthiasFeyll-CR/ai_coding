@@ -4,10 +4,11 @@
 
 @layer base {
   body {
-    @apply bg-bg-primary text-text-primary font-sans antialiased;
+    @apply text-text-primary font-sans antialiased;
+    background-color: #0a0e1a;
     background-image:
       /* Subtle dot grid */
-      radial-gradient(circle, rgba(6, 182, 212, 0.06) 1px, transparent 1px),
+      radial-gradient(circle, rgba(6, 182, 212, 0.18) 1px, transparent 1px),
       /* Multi-color gradient overlay */
       linear-gradient(
         135deg,

@@ -142,7 +142,7 @@ ralph-pipeline validate-infra --config pipeline-config.json    # Validate test i
 | Arch+AI Integrator | Specification | Manual |
 | Spec QA | Specification | Manual |
 | Test Architect | Specification | Manual |
-| Strategy Planner | Planning | Manual |
+| Milestone Planner | Planning | Manual |
 | Pipeline Configurator | Planning | Manual |
 | PRD Writer | Phase 1 | Automated |
 | QA Engineer | Phase 3 | Automated |

@@ -57,7 +57,7 @@ const SPEC_STEPS = [
 const PLAN_STEPS = [
   {
     num: '5',
-    name: 'Strategy Planner',
+    name: 'Milestone Planner',
     output: 'docs/05-milestones/',
     desc: 'Dependency analysis, milestone scope files with context-weight validation, auto-splits oversized milestones',
     color: 'border-l-accent-green',

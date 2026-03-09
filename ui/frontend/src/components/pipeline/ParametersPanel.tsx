@@ -5,17 +5,17 @@
  * on blur, and provides expandable help text per parameter.
  */
 
-import { projectsApi } from '@/api/client';
+import { modelsApi, projectsApi } from '@/api/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-    AlertTriangleIcon,
-    CheckCircle2Icon,
-    HelpCircleIcon,
-    Loader2Icon,
-    SettingsIcon,
-    SlidersIcon,
+  AlertTriangleIcon,
+  CheckCircle2Icon,
+  HelpCircleIcon,
+  Loader2Icon,
+  SettingsIcon,
+  SlidersIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -104,6 +104,7 @@ const PARAMETER_GROUPS: ParameterGroup[] = [
     icon: <SettingsIcon className="w-4 h-4" />,
     description: 'Test commands, timeouts, and infrastructure setup.',
     params: [
+      // ── Commands ──
       {
         key: 'test_execution.test_command',
         label: 'Test Command',
@@ -126,6 +127,28 @@ const PARAMETER_GROUPS: ParameterGroup[] = [
         help: 'Separate integration test command rendered in the agent runtime footer. Useful when you have a split test suite (unit vs. integration).',
       },
       {
+        key: 'test_execution.setup_command',
+        label: 'Test Setup Command',
+        type: 'command',
+        defaultValue: null,
+        help: 'Start test infrastructure services before tests (e.g., "docker compose up -d"). Runs once per test execution phase.',
+      },
+      {
+        key: 'test_execution.teardown_command',
+        label: 'Test Teardown Command',
+        type: 'command',
+        defaultValue: null,
+        help: 'Stop test infrastructure after tests (e.g., "docker compose down"). Runs after test execution completes.',
+      },
+      {
+        key: 'test_execution.condition',
+        label: 'Test Condition',
+        type: 'command',
+        defaultValue: '',
+        help: 'Shell command that determines whether tests should run. If this exits non-zero, tests are skipped. Example: "test -f package.json" to only run tests when the file exists.',
+      },
+      // ── Numeric parameters ──
+      {
         key: 'test_execution.timeout_seconds',
         label: 'Test Timeout (s)',
         type: 'number',
@@ -142,28 +165,6 @@ const PARAMETER_GROUPS: ParameterGroup[] = [
         help: 'Maximum seconds for the build command. Increase for projects with long compile times (e.g., Rust, large TypeScript projects).',
       },
       {
-        key: 'test_execution.max_fix_cycles',
-        label: 'Test Fix Max Cycles',
-        type: 'number',
-        defaultValue: 5,
-        nonNegative: true,
-        help: 'Maximum attempts to auto-fix test failures. Higher values (> 5) allow more passes but significantly increase cost. A value of 0 means no test-fix attempts.',
-      },
-      {
-        key: 'test_execution.setup_command',
-        label: 'Test Setup Command',
-        type: 'command',
-        defaultValue: null,
-        help: 'Start test infrastructure services before tests (e.g., "docker compose up -d"). Runs once per test execution phase.',
-      },
-      {
-        key: 'test_execution.teardown_command',
-        label: 'Test Teardown Command',
-        type: 'command',
-        defaultValue: null,
-        help: 'Stop test infrastructure after tests (e.g., "docker compose down"). Runs after test execution completes.',
-      },
-      {
         key: 'test_execution.setup_timeout_seconds',
         label: 'Setup Timeout (s)',
         type: 'number',
@@ -172,11 +173,12 @@ const PARAMETER_GROUPS: ParameterGroup[] = [
         help: 'Maximum seconds for the setup command to complete. Infrastructure like databases may need 30-60s to start.',
       },
       {
-        key: 'test_execution.condition',
-        label: 'Test Condition',
-        type: 'command',
-        defaultValue: '',
-        help: 'Shell command that determines whether tests should run. If this exits non-zero, tests are skipped. Example: "test -f package.json" to only run tests when the file exists.',
+        key: 'test_execution.max_fix_cycles',
+        label: 'Test Fix Max Cycles',
+        type: 'number',
+        defaultValue: 5,
+        nonNegative: true,
+        help: 'Maximum attempts to auto-fix test failures. Higher values (> 5) allow more passes but significantly increase cost. A value of 0 means no test-fix attempts.',
       },
     ],
   },
@@ -472,7 +474,7 @@ function ParameterField({
                 'bg-bg-tertiary border rounded-md px-3 py-1.5 text-sm text-text-primary',
                 'focus:outline-none focus:ring-1 focus:ring-accent-cyan focus:border-accent-cyan',
                 'transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
-                param.type === 'command' ? 'font-mono w-64' : 'w-28',
+                param.type === 'command' ? 'font-mono flex-1 min-w-[16rem]' : param.type === 'text' ? 'flex-1 min-w-[12rem]' : 'w-28',
                 error ? 'border-status-error' : 'border-border-subtle',
               )}
               placeholder={param.type === 'command' ? 'e.g. npm test' : String(param.defaultValue ?? '')}
@@ -531,10 +533,12 @@ function GroupContent({
   group,
   config,
   onSave,
+  projectId,
 }: {
   group: ParameterGroup;
   config: Record<string, unknown>;
   onSave: (key: string, value: unknown) => Promise<void>;
+  projectId: number;
 }) {
   return (
     <div className="space-y-2">
@@ -549,6 +553,115 @@ function GroupContent({
           onSave={onSave}
         />
       ))}
+      {group.id === 'agent' && (
+        <ModelSelector projectId={projectId} />
+      )}
+    </div>
+  );
+}
+
+// ── Model Selector (per-phase AI model selection) ─────────────────────────────
+
+const MODEL_PHASES = [
+  { key: 'ralph', label: 'Ralph (Implementation)' },
+  { key: 'phase0', label: 'Phase 0 (Bootstrap)' },
+  { key: 'prd_generation', label: 'PRD Generation' },
+  { key: 'qa_review', label: 'QA Review' },
+  { key: 'test_fix', label: 'Test Fix' },
+  { key: 'gate_fix', label: 'Gate Fix' },
+  { key: 'reconciliation', label: 'Reconciliation' },
+];
+
+function ModelSelector({ projectId }: { projectId: number }) {
+  const queryClient = useQueryClient();
+
+  const { data: availableModels } = useQuery({
+    queryKey: ['models-available'],
+    queryFn: () => modelsApi.listAvailable().then((r) => r.data),
+  });
+
+  const { data: currentModels } = useQuery({
+    queryKey: ['project-models', projectId],
+    queryFn: () => projectsApi.getModels(projectId).then((r) => r.data),
+    enabled: !!projectId,
+  });
+
+  const mutation = useMutation({
+    mutationFn: (models: Record<string, string>) =>
+      projectsApi.updateModels(projectId, models),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-models', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['overview', projectId] });
+    },
+  });
+
+  const [statuses, setStatuses] = useState<Record<string, SaveStatus>>({});
+
+  const handleModelChange = useCallback(
+    async (phaseKey: string, model: string) => {
+      const updated = { ...(currentModels ?? {}), [phaseKey]: model };
+      setStatuses((s) => ({ ...s, [phaseKey]: 'saving' }));
+      try {
+        await mutation.mutateAsync(updated);
+        setStatuses((s) => ({ ...s, [phaseKey]: 'saved' }));
+        setTimeout(() => setStatuses((s) => ({ ...s, [phaseKey]: 'idle' })), 2000);
+      } catch {
+        setStatuses((s) => ({ ...s, [phaseKey]: 'error' }));
+      }
+    },
+    [currentModels, mutation],
+  );
+
+  if (!availableModels || availableModels.length === 0) return null;
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border-subtle">
+      <div className="mb-3">
+        <h4 className="text-sm font-semibold text-text-primary">AI Model per Phase</h4>
+        <p className="text-xs text-text-secondary mt-0.5">
+          Select which AI model to use for each pipeline phase.
+        </p>
+      </div>
+      <div className="space-y-2">
+        {MODEL_PHASES.map(({ key, label }) => (
+          <div
+            key={key}
+            className="rounded-lg border bg-bg-secondary/40 border-border-subtle hover:border-border-emphasis transition-colors p-3 flex items-center gap-3"
+          >
+            <span className="flex-1 text-sm font-medium text-text-primary min-w-0 truncate">
+              {label}
+            </span>
+            <select
+              value={currentModels?.[key] ?? availableModels[0] ?? ''}
+              onChange={(e) => handleModelChange(key, e.target.value)}
+              className="bg-bg-tertiary border border-border-subtle rounded-md px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-cyan focus:border-accent-cyan w-56 appearance-none cursor-pointer"
+            >
+              {availableModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+            <div className="w-5 h-5 flex items-center justify-center">
+              {statuses[key] === 'saving' && (
+                <Loader2Icon className="w-4 h-4 text-accent-cyan animate-spin" />
+              )}
+              {statuses[key] === 'saved' && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                >
+                  <CheckCircle2Icon className="w-4 h-4 text-status-success" />
+                </motion.div>
+              )}
+              {statuses[key] === 'error' && (
+                <AlertTriangleIcon className="w-4 h-4 text-status-error" />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -823,6 +936,7 @@ export function ParametersPanel({ projectId }: ParametersPanelProps) {
                 group={activeGroup}
                 config={config}
                 onSave={handleSave}
+                projectId={projectId}
               />
             ) : activeSection === 'gate_checks' ? (
               <GateChecksEditor

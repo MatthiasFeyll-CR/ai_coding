@@ -119,9 +119,9 @@ const STATUS_STYLES: Record<MilestoneStatus, {
     label: 'Complete',
   },
   active: {
-    border: 'border-accent-cyan/60',
-    bg: 'bg-accent-cyan/5',
-    iconColor: 'text-accent-cyan',
+    border: 'border-accent-blue/60',
+    bg: 'bg-accent-blue/5',
+    iconColor: 'text-accent-blue',
     label: 'Active',
   },
   paused: {
@@ -146,7 +146,7 @@ const STATUS_STYLES: Record<MilestoneStatus, {
 
 const PHASE_STATUS_STYLES: Record<PhaseStatus, { bg: string; text: string; border: string }> = {
   completed: { bg: 'bg-status-success/15', text: 'text-status-success', border: 'border-status-success/30' },
-  active: { bg: 'bg-accent-cyan/15', text: 'text-accent-cyan', border: 'border-accent-cyan/30' },
+  active: { bg: 'bg-accent-blue/15', text: 'text-accent-blue', border: 'border-accent-blue/30' },
   paused: { bg: 'bg-status-warning/15', text: 'text-status-warning', border: 'border-status-warning/30' },
   failed: { bg: 'bg-status-error/15', text: 'text-status-error', border: 'border-status-error/30' },
   pending: { bg: 'bg-bg-tertiary/40', text: 'text-text-muted', border: 'border-border-subtle' },
@@ -164,7 +164,7 @@ function StatusIcon({ status, size = 18 }: { status: MilestoneStatus; size?: num
           transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
           className="flex items-center"
         >
-          <Loader2Icon style={s} className="text-accent-cyan" />
+          <Loader2Icon style={s} className="text-accent-blue" />
         </motion.div>
       );
     case 'paused':
@@ -190,7 +190,7 @@ function PhaseIcon({ status }: { status: PhaseStatus }) {
           transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
           className="flex items-center"
         >
-          <Loader2Icon className={`${w} text-accent-cyan`} />
+          <Loader2Icon className={`${w} text-accent-blue`} />
         </motion.div>
       );
     case 'failed':

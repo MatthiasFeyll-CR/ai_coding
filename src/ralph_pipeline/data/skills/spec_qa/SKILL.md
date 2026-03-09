@@ -26,7 +26,7 @@ Catching issues here — before any code is written — is 100x cheaper than dis
 [3c]  Arch+AI Integrator      →  docs/03-integration/
 [4]   Spec QA                 →  docs/04-spec-qa/         ← YOU ARE HERE
 [4b]  Test Architect          →  docs/04-test-architecture/
-[5]   Strategy Planner        →  docs/05-milestones/
+[5]   Milestone Planner       →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 [7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```

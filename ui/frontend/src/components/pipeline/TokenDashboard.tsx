@@ -1,31 +1,32 @@
 import { pipelineApi } from '@/api/client';
+import { notify } from '@/lib/notify';
 import type { TokenUsage } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-    AlertTriangleIcon,
-    CoinsIcon,
-    CpuIcon,
-    DatabaseIcon,
-    LayersIcon
+  AlertTriangleIcon,
+  CoinsIcon,
+  CpuIcon,
+  DatabaseIcon,
+  LayersIcon
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-    Area,
-    Bar,
-    BarChart,
-    CartesianGrid,
-    Cell,
-    ComposedChart,
-    Legend,
-    Line,
-    Pie,
-    PieChart,
-    ReferenceLine,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis
+  Area,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Legend,
+  Line,
+  Pie,
+  PieChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
 } from 'recharts';
 
 interface TokenDashboardProps {
@@ -184,6 +185,29 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
     enabled: !!projectId,
     refetchInterval: 5000,
   });
+
+  // Budget exceeded warning — all hooks must be before any early return
+  const budgetWarningFired = useRef(false);
+  const budgetUsd = overviewData?.cost.budget_usd ?? 0;
+  const forecastTotalForWarning = (() => {
+    if (!tokenData || !overviewData) return 0;
+    const completedMs = overviewData.progress.completed_milestones ?? 0;
+    const totalMs = overviewData.progress.total_milestones ?? 0;
+    if (completedMs < 1 || completedMs >= totalMs) return 0;
+    const phase0Cost = tokenData.by_milestone?.['0']?.cost_usd ?? 0;
+    const milestoneCost = tokenData.total.cost_usd - phase0Cost;
+    const completedNonZero = Object.keys(tokenData.by_milestone ?? {}).filter(k => k !== '0').length || 1;
+    const avgPerMs = milestoneCost / completedNonZero;
+    return tokenData.total.cost_usd + avgPerMs * (totalMs - completedMs);
+  })();
+  const isForecastOverBudgetEarly = budgetUsd > 0 && forecastTotalForWarning > budgetUsd;
+
+  useEffect(() => {
+    if (isForecastOverBudgetEarly && !budgetWarningFired.current) {
+      budgetWarningFired.current = true;
+      notify('warning', `Cost forecast (${formatCost(forecastTotalForWarning)}) exceeds budget (${formatCost(budgetUsd)})`);
+    }
+  }, [isForecastOverBudgetEarly, forecastTotalForWarning, budgetUsd]);
 
   if (isLoading) {
     return (
@@ -444,6 +468,8 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
     return { points: forecastPoints, forecastTotal, budgetUsd, method };
   })();
 
+  const isForecastOverBudget = forecastData.budgetUsd > 0 && forecastData.forecastTotal > forecastData.budgetUsd;
+
   // Merge actual + forecast data for the combined chart
   const combinedCostData = (() => {
     const actual = cumulativeCostData.map((d) => ({
@@ -600,9 +626,15 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
                       {formatCost(forecastData.budgetUsd)}
                     </p>
                     {forecastData.forecastTotal > forecastData.budgetUsd && (
-                      <p className="text-xs text-status-error mt-1">
-                        +{formatCost(forecastData.forecastTotal - forecastData.budgetUsd)} over
-                      </p>
+                      <>
+                        <p className="text-xs text-status-error mt-1">
+                          +{formatCost(forecastData.forecastTotal - forecastData.budgetUsd)} over
+                        </p>
+                        <div className="flex items-center gap-1 mt-1.5 px-1.5 py-0.5 bg-status-warning/20 rounded-full">
+                          <AlertTriangleIcon className="w-3 h-3 text-status-warning" />
+                          <span className="text-[9px] font-bold text-status-warning uppercase">Over Budget</span>
+                        </div>
+                      </>
                     )}
                   </div>
                 )}

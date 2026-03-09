@@ -196,7 +196,7 @@ def run_prd_generation(
             f"Domain split recommendation saved to {domain_split}"
         )
         plogger.warning(
-            "Pipeline pausing — re-run the Strategy Planner to split this "
+            "Pipeline pausing — re-run the Milestone Planner to split this "
             "milestone, then restart the pipeline."
         )
         raise PhaseError(

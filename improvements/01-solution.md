@@ -2,7 +2,7 @@
 
 ## Problem Solved
 
-Milestone scope files (`docs/05-milestones/milestone-N.md`) were free-form markdown — the only bridge between the Strategy Planner (planning) and the PRD Writer (execution). The PRD Writer AI had to independently re-derive feature→table→endpoint→test-ID mappings from prose, causing silent data loss that surfaced as QA failures 2–3 phases later.
+Milestone scope files (`docs/05-milestones/milestone-N.md`) were free-form markdown — the only bridge between the Milestone Planner (planning) and the PRD Writer (execution). The PRD Writer AI had to independently re-derive feature→table→endpoint→test-ID mappings from prose, causing silent data loss that surfaced as QA failures 2–3 phases later.
 
 ## What Changed
 
@@ -84,7 +84,7 @@ The prompt still tells the AI to read `milestone_doc` and upstream docs — but 
 
 ## Files Changed — Skills (AI Prompts)
 
-### MODIFIED: `src/ralph_pipeline/data/skills/strategy_planner/SKILL.md`
+### MODIFIED: `src/ralph_pipeline/data/skills/milestone_planner/SKILL.md`
 
 Phase 4 now produces `milestone-N.json` instead of `milestone-N.md`. The skill includes:
 - Full JSON schema example with all fields

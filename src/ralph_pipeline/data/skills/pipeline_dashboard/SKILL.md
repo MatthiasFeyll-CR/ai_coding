@@ -25,7 +25,7 @@ Specification Phase (manual):
 [3c]  Arch+AI Integrator      →  docs/03-integration/
 [4]   Spec QA                 →  docs/04-spec-qa/
 [4b]  Test Architect          →  docs/04-test-architecture/
-[5]   Strategy Planner        →  docs/05-milestones/
+[5]   Milestone Planner       →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 
 Execution Phase (automated — ralph-pipeline):
@@ -54,7 +54,7 @@ Scan these locations for status information:
 | AI Engineer | `docs/03-ai/_status.md` | `handoff_ready`, phases completed |
 | Arch+AI Integrator | `docs/03-integration/_status.md` | `handoff_ready`, gaps resolved |
 | Spec QA | `docs/04-spec-qa/_status.md` | verdict (PASS/CONDITIONAL PASS/FAIL) |
-| Strategy Planner | `docs/05-milestones/_status.md` | `handoff_ready`, milestone count |
+| Milestone Planner | `docs/05-milestones/_status.md` | `handoff_ready`, milestone count |
 | Pipeline Configurator | `pipeline-config.json` + `.ralph/handover.json` | Config exists, valid JSON |
 | PRD Writer | `tasks/prd-mN.json` | Count of PRDs, which milestones covered |
 | Ralph Execution | `.ralph/progress.txt` | Current story, pass/fail status |
@@ -84,7 +84,7 @@ Produce or update `docs/pipeline-status.md`:
 | [3b] | AI Engineer | DONE / IN PROGRESS / NOT STARTED / N/A | [phase X/6 complete] |
 | [3c] | Arch+AI Integrator | DONE / IN PROGRESS / NOT STARTED / N/A | [phase X/4 complete] |
 | [4] | Spec QA | DONE / IN PROGRESS / NOT STARTED | [verdict: PASS/FAIL] |
-| [5] | Strategy Planner | DONE / IN PROGRESS / NOT STARTED | [X milestones] |
+| [5] | Milestone Planner | DONE / IN PROGRESS / NOT STARTED | [X milestones] |
 | [6] | Pipeline Configurator | DONE / NOT STARTED | [config generated] |
 | [7] | Pipeline Execution | SEE BELOW | [per-milestone detail] |
 | [8] | Release Engineer | DONE / NOT STARTED | |
@@ -144,7 +144,7 @@ Other skills call this at the end of their handoff phase. When invoked this way:
 If the user asks "what's the status?" or "where are we?", produce a condensed version:
 ```
 Pipeline: [1] DONE → [2] DONE → [3a] DONE / [3b] N/A → [4] DONE → [5] IN PROGRESS (phase 2/6)
-Next: Complete strategy planning, then pipeline configuration, then run ralph-pipeline.
+Next: Complete milestone planning, then pipeline configuration, then run ralph-pipeline.
 ```
 
 ---

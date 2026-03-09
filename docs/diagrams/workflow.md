@@ -16,7 +16,7 @@ Each skill produces a `handover.json` consumed by the next:
 
 ## Planning Phase (Manual)
 
-1. **Strategy Planner** → `docs/05-milestones/` — Milestone scope files with context-weight validation
+1. **Milestone Planner** → `docs/05-milestones/` — Milestone scope files with context-weight validation
 2. **Pipeline Configurator** → `pipeline-config.json` + `.ralph/CLAUDE.md` — Machine-readable config with declarative infrastructure specs
 
 ## Execution Phase (Automated)

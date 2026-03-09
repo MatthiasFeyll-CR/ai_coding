@@ -28,6 +28,7 @@ src/ralph_pipeline/ai/env.py
 src/ralph_pipeline/ai/prompts.py
 src/ralph_pipeline/data/skills/ai_engineer/SKILL.md
 src/ralph_pipeline/data/skills/arch_ai_integrator/SKILL.md
+src/ralph_pipeline/data/skills/milestone_planner/SKILL.md
 src/ralph_pipeline/data/skills/pipeline_configurator/SKILL.md
 src/ralph_pipeline/data/skills/pipeline_dashboard/SKILL.md
 src/ralph_pipeline/data/skills/prd_writer/SKILL.md
@@ -37,7 +38,6 @@ src/ralph_pipeline/data/skills/requirements_engineering/SKILL.md
 src/ralph_pipeline/data/skills/software_architect/SKILL.md
 src/ralph_pipeline/data/skills/spec_qa/SKILL.md
 src/ralph_pipeline/data/skills/spec_reconciler/SKILL.md
-src/ralph_pipeline/data/skills/strategy_planner/SKILL.md
 src/ralph_pipeline/data/skills/test_architect/SKILL.md
 src/ralph_pipeline/data/skills/ui_ux_designer/SKILL.md
 src/ralph_pipeline/data/skills/ui_ux_designer/data/charts.csv

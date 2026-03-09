@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -16,8 +17,10 @@ from ralph_pipeline.phases.ralph_execution import (COMPLETION_SIGNAL,
                                                    RUNTIME_FOOTER_START,
                                                    _build_runtime_footer,
                                                    _check_all_pass,
+                                                   _count_remaining,
                                                    _inject_runtime_footer,
-                                                   _run_ralph_loop)
+                                                   _run_ralph_loop,
+                                                   _write_claude_md)
 
 
 def _make_mock_claude(outputs: list[str]) -> MagicMock:
@@ -28,11 +31,19 @@ def _make_mock_claude(outputs: list[str]) -> MagicMock:
     return claude
 
 
+def _write_prd(scripts_dir: Path, stories: list[dict]) -> None:
+    """Write a prd.json into scripts_dir for testing."""
+    prd = {"userStories": stories}
+    (scripts_dir / "prd.json").write_text(json.dumps(prd))
+
+
 class TestRunRalphLoop:
-    def test_completes_on_first_iteration(self, tmp_path: Path):
+    def test_completes_when_all_stories_pass(self, tmp_path: Path):
+        """COMPLETE + all stories passes=true → returns True on first iteration."""
         scripts = tmp_path / "scripts"
         scripts.mkdir()
         (scripts / "CLAUDE.md").write_text("Do the work.")
+        _write_prd(scripts, [{"id": "US-001", "passes": True}])
 
         log_dir = tmp_path / "logs"
         claude = _make_mock_claude([f"Done. {COMPLETION_SIGNAL}"])
@@ -55,18 +66,40 @@ class TestRunRalphLoop:
         plogger.success.assert_called_once()
 
     @patch("ralph_pipeline.phases.ralph_execution.time.sleep")
-    def test_completes_on_third_iteration(self, mock_sleep, tmp_path: Path):
+    def test_continues_when_stories_remain(self, mock_sleep, tmp_path: Path):
+        """COMPLETE but stories remain → continues to next iteration."""
         scripts = tmp_path / "scripts"
         scripts.mkdir()
         (scripts / "CLAUDE.md").write_text("Do the work.")
+        prd_path = scripts / "prd.json"
 
-        claude = _make_mock_claude(
-            [
-                "Still working...",
-                "More work...",
-                f"All done {COMPLETION_SIGNAL}",
-            ]
-        )
+        # Start with 2 incomplete stories; after first iteration one passes
+        _write_prd(scripts, [
+            {"id": "US-001", "passes": False},
+            {"id": "US-002", "passes": False},
+        ])
+
+        call_count = 0
+
+        def claude_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # Simulate Ralph marking one story done
+                prd_data = json.loads(prd_path.read_text())
+                prd_data["userStories"][0]["passes"] = True
+                prd_path.write_text(json.dumps(prd_data))
+                return SimpleNamespace(output=f"Story 1 done {COMPLETION_SIGNAL}")
+            elif call_count == 2:
+                # Simulate Ralph marking second story done
+                prd_data = json.loads(prd_path.read_text())
+                prd_data["userStories"][1]["passes"] = True
+                prd_path.write_text(json.dumps(prd_data))
+                return SimpleNamespace(output=f"Story 2 done {COMPLETION_SIGNAL}")
+            return SimpleNamespace(output="unexpected")
+
+        claude = MagicMock()
+        claude.run.side_effect = claude_side_effect
         plogger = MagicMock()
 
         result = _run_ralph_loop(
@@ -81,15 +114,53 @@ class TestRunRalphLoop:
         )
 
         assert result is True
-        assert claude.run.call_count == 3
-        # Sleep called between iterations (not after completion)
-        assert mock_sleep.call_count == 2
+        assert claude.run.call_count == 2
+        # Sleep called after first story completion before starting next
+        assert mock_sleep.call_count == 1
+
+    @patch("ralph_pipeline.phases.ralph_execution.time.sleep")
+    def test_retries_on_no_complete_signal(self, mock_sleep, tmp_path: Path):
+        """No COMPLETE signal → retries, then COMPLETE + all pass → done."""
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        (scripts / "CLAUDE.md").write_text("Do the work.")
+        _write_prd(scripts, [{"id": "US-001", "passes": False}])
+        prd_path = scripts / "prd.json"
+
+        def claude_side_effect(*args, **kwargs):
+            # First call: no signal (crash/timeout)
+            if claude.run.call_count <= 1:
+                return SimpleNamespace(output="Still working...")
+            # Second call: completes
+            prd_data = json.loads(prd_path.read_text())
+            prd_data["userStories"][0]["passes"] = True
+            prd_path.write_text(json.dumps(prd_data))
+            return SimpleNamespace(output=f"All done {COMPLETION_SIGNAL}")
+
+        claude = MagicMock()
+        claude.run.side_effect = claude_side_effect
+        plogger = MagicMock()
+
+        result = _run_ralph_loop(
+            claude=claude,
+            scripts_dir=scripts,
+            log_dir=tmp_path / "logs",
+            max_iterations=5,
+            model="test",
+            milestone_id=1,
+            plogger=plogger,
+            event_logger=MagicMock(),
+        )
+
+        assert result is True
+        assert claude.run.call_count == 2
 
     @patch("ralph_pipeline.phases.ralph_execution.time.sleep")
     def test_reaches_max_iterations(self, mock_sleep, tmp_path: Path):
         scripts = tmp_path / "scripts"
         scripts.mkdir()
         (scripts / "CLAUDE.md").write_text("Do the work.")
+        _write_prd(scripts, [{"id": "US-001", "passes": False}])
 
         claude = _make_mock_claude(["nope"] * 3)
         plogger = MagicMock()
@@ -137,12 +208,19 @@ class TestRunRalphLoop:
         scripts = tmp_path / "scripts"
         scripts.mkdir()
         (scripts / "CLAUDE.md").write_text("Do the work.")
+        _write_prd(scripts, [{"id": "US-001", "passes": False}])
+        prd_path = scripts / "prd.json"
+
+        def side_effect(*args, **kwargs):
+            if claude.run.call_count <= 1:
+                raise RuntimeError("timeout")
+            prd_data = json.loads(prd_path.read_text())
+            prd_data["userStories"][0]["passes"] = True
+            prd_path.write_text(json.dumps(prd_data))
+            return SimpleNamespace(output=f"ok {COMPLETION_SIGNAL}")
 
         claude = MagicMock()
-        claude.run.side_effect = [
-            RuntimeError("timeout"),
-            SimpleNamespace(output=f"ok {COMPLETION_SIGNAL}"),
-        ]
+        claude.run.side_effect = side_effect
         plogger = MagicMock()
 
         result = _run_ralph_loop(
@@ -178,6 +256,70 @@ class TestCheckAllPass:
         prd = tmp_path / "prd.json"
         prd.write_text('{"userStories": []}')
         assert _check_all_pass(prd) is False
+
+
+class TestCountRemaining:
+    def test_all_remaining(self, tmp_path: Path):
+        prd = tmp_path / "prd.json"
+        prd.write_text('{"userStories": [{"passes": false}, {"passes": false}]}')
+        assert _count_remaining(prd) == 2
+
+    def test_some_remaining(self, tmp_path: Path):
+        prd = tmp_path / "prd.json"
+        prd.write_text('{"userStories": [{"passes": true}, {"passes": false}]}')
+        assert _count_remaining(prd) == 1
+
+    def test_none_remaining(self, tmp_path: Path):
+        prd = tmp_path / "prd.json"
+        prd.write_text('{"userStories": [{"passes": true}, {"passes": true}]}')
+        assert _count_remaining(prd) == 0
+
+    def test_missing_file(self, tmp_path: Path):
+        assert _count_remaining(tmp_path / "nonexistent.json") == -1
+
+    def test_missing_passes_field(self, tmp_path: Path):
+        """Stories without passes field default to False (remaining)."""
+        prd = tmp_path / "prd.json"
+        prd.write_text('{"userStories": [{"id": "US-001"}]}')
+        assert _count_remaining(prd) == 1
+
+
+class TestWriteClaudeMd:
+    def test_writes_per_story_instructions(self, tmp_path: Path):
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        plogger = MagicMock()
+
+        _write_claude_md(scripts, plogger)
+
+        content = (scripts / "CLAUDE.md").read_text()
+        assert "One story per session" in content
+        assert "COMPLETE" in content
+        assert "Repeat from step 1" not in content
+        plogger.info.assert_called()
+
+    def test_overwrites_existing(self, tmp_path: Path):
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        (scripts / "CLAUDE.md").write_text("old content with Repeat from step 1")
+        plogger = MagicMock()
+
+        _write_claude_md(scripts, plogger)
+
+        content = (scripts / "CLAUDE.md").read_text()
+        assert "old content" not in content
+        assert "One story per session" in content
+
+    def test_permits_prd_passes_modification(self, tmp_path: Path):
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        plogger = MagicMock()
+
+        _write_claude_md(scripts, plogger)
+
+        content = (scripts / "CLAUDE.md").read_text()
+        assert "passes" in content.lower()
+        assert "prd.json" in content
 
 
 def _make_config(**overrides) -> PipelineConfig:

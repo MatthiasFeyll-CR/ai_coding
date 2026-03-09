@@ -81,8 +81,8 @@ const SKILLS: Skill[] = [
     invocation: 'Manual',
   },
   {
-    name: 'Strategy Planner',
-    trigger: '/strategy_planner',
+    name: 'Milestone Planner',
+    trigger: '/milestone_planner',
     output: 'docs/05-milestones/',
     desc: 'Dependency analysis, milestone scope files with context-weight validation. Auto-splits oversized milestones along domain boundaries.',
     category: 'plan',

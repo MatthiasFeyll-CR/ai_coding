@@ -28,13 +28,13 @@ You have access to a **design intelligence database** with 67 styles, 96 color p
 [3c]  Arch+AI Integrator      →  docs/03-integration/
 [4]   Spec QA                 →  docs/04-spec-qa/
 [4b]  Test Architect          →  docs/04-test-architecture/
-[5]   Strategy Planner        →  docs/05-milestones/
+[5]   Milestone Planner       →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 [7]   Pipeline Execution      →  bash pipeline.sh (automated)
 ```
 
 **Your input:** Read ALL files in `docs/01-requirements/` (especially `pages.md` and `features.md`) AND `docs/02-architecture/tech-stack.md` (to know which UI framework/library to design for) AND `docs/02-architecture/api-design.md` (to understand data shapes for forms/displays). If `docs/03-ai/` exists, also read `docs/03-ai/agent-architecture.md` to identify AI-facing UI surfaces (chat interfaces, streaming response areas, feedback mechanisms, AI loading states).
-**Your output:** `docs/03-design/` — consumed by Spec QA, Strategy Planner, and PRD Writer so Ralph gets visual specs alongside behavioral specs.
+**Your output:** `docs/03-design/` — consumed by Spec QA, Milestone Planner, and PRD Writer so Ralph gets visual specs alongside behavioral specs.
 
 ---
 
@@ -154,7 +154,7 @@ Micro-interactions, transitions, loading patterns, scroll behavior, keyboard/foc
 
 ### Phase 5: Component Inventory, Summary & Handoff
 
-Before handoff, produce a **component inventory** — a flat list of every unique component mentioned across all page layouts, with the page(s) where each appears. This becomes critical input for the Strategy Planner when scoping which milestone needs which shared components.
+Before handoff, produce a **component inventory** — a flat list of every unique component mentioned across all page layouts, with the page(s) where each appears. This becomes critical input for the Milestone Planner when scoping which milestone needs which shared components.
 
 **Output (as section in `_status.md` or separate `docs/03-design/component-inventory.md`):**
 
@@ -179,7 +179,7 @@ If during the design process you need to modify upstream docs (requirements or a
    - `docs/01-requirements/features.md` — Added FA-XX (Theme Support) because [reason]
    - `docs/02-architecture/tech-stack.md` — Added [dependency] because [reason]
    ```
-3. This ensures downstream specialists (Strategy Planner, PRD Writer) know what changed
+3. This ensures downstream specialists (Milestone Planner, PRD Writer) know what changed
 
 Update `_status.md` with `handoff_ready: true`.
 

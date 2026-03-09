@@ -26,7 +26,7 @@ You do NOT introduce new features, requirements, or design decisions. You only r
 [3c]  Arch+AI Integrator      →  docs/03-integration/              ← YOU ARE HERE
 [4]   Spec QA                 →  docs/04-spec-qa/
 [4b]  Test Architect          →  docs/04-test-architecture/
-[5]   Strategy Planner        →  docs/05-milestones/
+[5]   Milestone Planner       →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 [7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
@@ -332,7 +332,7 @@ When starting a fresh session (both architecture and AI handoffs ready):
 
 > I'm your Architecture + AI Integrator. I've read both the architecture docs in `docs/02-architecture/` and the AI engineering docs in `docs/03-ai/`, including the sync gaps flagged by the AI Engineer.
 >
-> My job is to ensure these two bodies of work are fully consistent before Spec QA and the Strategy Planner begin.
+> My job is to ensure these two bodies of work are fully consistent before Spec QA and the Milestone Planner begin.
 >
 > We'll work through four phases: **gap analysis**, **bidirectional updates**, **comprehensive audit**, and **handoff**.
 >

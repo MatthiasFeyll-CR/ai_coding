@@ -5,12 +5,12 @@ import { useAppStore } from '@/store/appStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  HistoryIcon,
-  PlayIcon,
-  RotateCcwIcon,
-  SettingsIcon,
-  SquareIcon,
-  Trash2Icon,
+    HistoryIcon,
+    PlayIcon,
+    RotateCcwIcon,
+    SettingsIcon,
+    SquareIcon,
+    Trash2Icon,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -27,6 +27,7 @@ export function ControlPanel() {
     mutationFn: () => pipelineApi.start(activeProject!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-state'] });
+      notify('info', 'Pipeline started');
     },
   });
 
@@ -34,6 +35,7 @@ export function ControlPanel() {
     mutationFn: () => pipelineApi.stop(activeProject!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-state'] });
+      notify('info', 'Pipeline stopped');
     },
   });
 
@@ -41,6 +43,7 @@ export function ControlPanel() {
     mutationFn: () => pipelineApi.resume(activeProject!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-state'] });
+      notify('info', 'Pipeline resumed');
     },
   });
 

@@ -17,7 +17,7 @@ Read the referenced files to get full context before making recommendations.
 
 Ralph Pipeline orchestrates multi-milestone software projects using AI agents. Each milestone goes through: PRD Generation → Ralph Coding → QA → Merge → Reconcile.
 
-The **Strategy Planner** (planning phase) sizes milestones to fit within the AI agent's context window. The **PRD Writer** (execution Phase 1) then assembles a **context bundle** (`.ralph/context.md`) — the single document Ralph reads for all domain knowledge during coding.
+The **Milestone Planner** (planning phase) sizes milestones to fit within the AI agent's context window. The **PRD Writer** (execution Phase 1) then assembles a **context bundle** (`.ralph/context.md`) — the single document Ralph reads for all domain knowledge during coding.
 
 ---
 
@@ -26,12 +26,12 @@ The **Strategy Planner** (planning phase) sizes milestones to fit within the AI 
 Context weight is validated **only during planning**, based on spec documents. By execution time, the actual context is much larger because:
 
 1. **Previous milestones added code.** The context bundle includes a codebase snapshot (file tree + contents of files stories will modify). This grows with every milestone.
-2. **The codebase snapshot didn't exist during planning.** The Strategy Planner's weight calculation only counts spec references, not actual code.
+2. **The codebase snapshot didn't exist during planning.** The Milestone Planner's weight calculation only counts spec references, not actual code.
 3. **The warning is non-blocking.** The PRD Writer skill says "warn if bundle > ~1500 lines" but the pipeline code does **nothing** with this warning.
 
-### Strategy Planner's validation (planning time)
+### Milestone Planner's validation (planning time)
 
-From `strategy_planner/SKILL.md`, Phase 4:
+From `milestone_planner/SKILL.md`, Phase 4:
 - Context weight thresholds: >30 unique file paths, >5 doc sections, >10 stories → split warning
 - This only counts references in spec documents — it cannot know how much code will exist after prior milestones run
 
@@ -82,7 +82,7 @@ CLAUDE.md tells Ralph to read context.md. If context.md exceeds the effective co
 
 | File | Role |
 |------|------|
-| `src/ralph_pipeline/data/skills/strategy_planner/SKILL.md` | Defines context weight thresholds (spec-time only) |
+| `src/ralph_pipeline/data/skills/milestone_planner/SKILL.md` | Defines context weight thresholds (spec-time only) |
 | `src/ralph_pipeline/data/skills/prd_writer/SKILL.md` | Assembles context.md with 1500-line warning |
 | `src/ralph_pipeline/phases/prd_generation.py` | Phase 1 — only checks existence, not size |
 | `src/ralph_pipeline/phases/ralph_execution.py` | Phase 2 — feeds context to Ralph with no size guard |

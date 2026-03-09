@@ -60,7 +60,7 @@ export function ContextTab() {
               layer: 'Layer 1',
               name: 'Planning',
               desc: 'Context Weight Sizing',
-              detail: 'Strategy Planner computes per-milestone context weight. Over threshold → split milestone.',
+              detail: 'Milestone Planner computes per-milestone context weight. Over threshold → split milestone.',
               color: 'border-l-accent-cyan bg-accent-cyan/5',
               when: 'Planning phase (once)',
             },

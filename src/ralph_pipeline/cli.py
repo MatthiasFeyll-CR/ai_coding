@@ -267,14 +267,58 @@ def run_pipeline(args: argparse.Namespace) -> None:
         )
 
     # Auto-validate infra before first milestone (design §8.2)
+    # This is a HARD GATE — if infra is unhealthy, the pipeline must not proceed.
     if not args.dry_run and (
         config.test_execution.services or config.test_execution.tier1.environments
     ):
-        plogger.info("Auto-validating test infrastructure...")
-        try:
-            if config.test_execution.setup_command:
-                plogger.info("Starting test infrastructure services...")
-                from ralph_pipeline.subprocess_utils import run_command as _run_cmd
+        plogger.section("Infrastructure Check")
+        plogger.info("Validating test infrastructure (hard gate)...")
+
+        from ralph_pipeline.subprocess_utils import run_command as _run_cmd
+
+        # Step 1: Condition pre-check (e.g. "command -v docker")
+        if config.test_execution.condition:
+            plogger.info(
+                f"Checking condition: {config.test_execution.condition}"
+            )
+            try:
+                _run_cmd(
+                    config.test_execution.condition,
+                    cwd=project_root,
+                    timeout=30,
+                    check=True,
+                    shell=True,
+                )
+                plogger.success("Condition met")
+            except Exception as e:
+                plogger.error(
+                    f"Infrastructure condition failed: "
+                    f"{config.test_execution.condition}\n"
+                    f"  {e}\n"
+                    f"Ensure prerequisites are installed and try again."
+                )
+                sys.exit(1)
+
+        # Step 2: Build images (separate from setup)
+        if config.test_execution.build_command:
+            plogger.info("Building test infrastructure images...")
+            try:
+                _run_cmd(
+                    config.test_execution.build_command,
+                    cwd=project_root,
+                    timeout=config.test_execution.build_timeout_seconds,
+                    check=True,
+                    shell=True,
+                )
+                plogger.success("Build complete")
+            except Exception as e:
+                plogger.error(f"Infrastructure build FAILED: {e}")
+                sys.exit(1)
+
+        # Step 3: Start services
+        if config.test_execution.setup_command:
+            plogger.info("Starting test infrastructure services...")
+            try:
                 _run_cmd(
                     config.test_execution.setup_command,
                     cwd=project_root,
@@ -282,15 +326,38 @@ def run_pipeline(args: argparse.Namespace) -> None:
                     check=True,
                     shell=True,
                 )
-            if config.test_execution.services:
-                report = health_checker.wait_all_ready(config.test_execution.services)
-                for r in report.services:
-                    if r.healthy:
-                        plogger.success(f"{r.name} ready ({r.wait_seconds:.1f}s)")
-                    else:
-                        plogger.warning(f"{r.name}: {r.error}")
-        except Exception as e:
-            plogger.warning(f"Infra pre-validation: {e}")
+                plogger.success("Services started")
+            except Exception as e:
+                plogger.error(f"Infrastructure setup FAILED: {e}")
+                sys.exit(1)
+
+        # Step 4: Health check every service — ALL must be healthy
+        if config.test_execution.services:
+            svc_ports = {s.name: s.port for s in config.test_execution.services}
+            report = health_checker.wait_all_ready(config.test_execution.services)
+            for r in report.services:
+                port = svc_ports.get(r.name, "?")
+                if r.healthy:
+                    plogger.success(
+                        f"{r.name} tcp:{port} ready ({r.wait_seconds:.1f}s)"
+                    )
+                else:
+                    plogger.error(f"{r.name}: UNHEALTHY — {r.error}")
+            if not report.all_healthy:
+                unhealthy = [r.name for r in report.services if not r.healthy]
+                plogger.error(
+                    f"Infrastructure check FAILED — unhealthy services: "
+                    f"{', '.join(unhealthy)}\n"
+                    f"Fix the failing services and try again."
+                )
+                # Attempt cleanup before exiting
+                try:
+                    infra.teardown_all()
+                except Exception:
+                    pass
+                sys.exit(1)
+
+        plogger.success("Infrastructure check PASSED — all services healthy")
 
     # Determine starting milestone
     milestones = config.milestones

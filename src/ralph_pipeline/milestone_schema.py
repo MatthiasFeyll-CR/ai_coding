@@ -1,7 +1,7 @@
 """Milestone scope JSON schema — structured bridge between planning and execution.
 
 Replaces free-form milestone-N.md with machine-parseable milestone-N.json.
-The Strategy Planner produces these; the pipeline validates and injects them
+The Milestone Planner produces these; the pipeline validates and injects them
 into the PRD Writer prompt.
 """
 
@@ -75,7 +75,7 @@ class ContextWeight(BaseModel):
 class MilestoneScope(BaseModel):
     """Complete structured milestone scope — replaces milestone-N.md.
 
-    Produced by Strategy Planner, consumed by pipeline + PRD Writer.
+    Produced by Milestone Planner, consumed by pipeline + PRD Writer.
     """
 
     id: int

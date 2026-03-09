@@ -18,10 +18,10 @@ Read the referenced files to get full context before making recommendations.
 Ralph Pipeline is a Python CLI that orchestrates multi-milestone software projects using AI agents (Claude). The pipeline has three macro-phases:
 
 1. **Specification Phase** (manual) — Requirements → Architecture → Design → Test Architecture
-2. **Planning Phase** (manual) — Strategy Planner → Pipeline Configurator
+2. **Planning Phase** (manual) — Milestone Planner → Pipeline Configurator
 3. **Execution Phase** (automated) — PRD Generation → Ralph Coding → QA → Merge → Reconcile
 
-The **Strategy Planner** (step 5) analyzes all specification docs and produces milestone scope files. The **PRD Writer** (Phase 1 of execution) reads these scope files and generates structured JSON PRDs + context bundles for the Ralph coding agent.
+The **Milestone Planner** (step 5) analyzes all specification docs and produces milestone scope files. The **PRD Writer** (Phase 1 of execution) reads these scope files and generates structured JSON PRDs + context bundles for the Ralph coding agent.
 
 ---
 
@@ -29,9 +29,9 @@ The **Strategy Planner** (step 5) analyzes all specification docs and produces m
 
 Milestone scope files (`docs/05-milestones/milestone-N.md`) are the **only bridge** between planning and execution. They are free-form markdown with no enforced structure.
 
-### What the Strategy Planner produces
+### What the Milestone Planner produces
 
-The Strategy Planner performs significant analytical work:
+The Milestone Planner performs significant analytical work:
 - Dependency analysis between features
 - Context weight validation (file path count, doc section count, story count)
 - Feature-to-milestone mapping with domain cohesion grouping
@@ -60,9 +60,9 @@ Instructions:
 
 ### What gets lost
 
-The Strategy Planner's analytical mappings (which features share data models, which API endpoints are coupled, which doc sections are relevant, which test IDs are assigned) are **embedded as prose**. The PRD Writer AI must **independently re-derive** these same mappings by re-reading all docs.
+The Milestone Planner's analytical mappings (which features share data models, which API endpoints are coupled, which doc sections are relevant, which test IDs are assigned) are **embedded as prose**. The PRD Writer AI must **independently re-derive** these same mappings by re-reading all docs.
 
-If the PRD Writer interprets a markdown reference differently than the Strategy Planner intended:
+If the PRD Writer interprets a markdown reference differently than the Milestone Planner intended:
 - Spec sections silently vanish from the PRD
 - Test IDs get missed
 - Architecture references get omitted from the context bundle
@@ -76,7 +76,7 @@ The failure is **silent** — it only surfaces 2-3 phases later as mysterious QA
 
 | File | Role |
 |------|------|
-| `src/ralph_pipeline/data/skills/strategy_planner/SKILL.md` | Strategy Planner skill — defines milestone scope file format |
+| `src/ralph_pipeline/data/skills/milestone_planner/SKILL.md` | Milestone Planner skill — defines milestone scope file format |
 | `src/ralph_pipeline/data/skills/prd_writer/SKILL.md` | PRD Writer skill — consumes milestone scope files |
 | `src/ralph_pipeline/ai/prompts.py` | `prd_generation_prompt()` — the prompt that bridges planning→execution |
 | `src/ralph_pipeline/phases/prd_generation.py` | Phase 1 implementation — no structural validation of inputs |
@@ -100,9 +100,9 @@ prompt = prd_generation_prompt(
 )
 ```
 
-### Key section in Strategy Planner skill
+### Key section in Milestone Planner skill
 
-Phase 4 of `strategy_planner/SKILL.md` defines milestone scope files as:
+Phase 4 of `milestone_planner/SKILL.md` defines milestone scope files as:
 - Self-contained with features, data model refs, API refs, page/component refs, story outline, acceptance criteria
 - Context weight validated (>30 file paths, >5 doc sections, >10 stories triggers warning)
 
@@ -122,7 +122,7 @@ But the format is narrative — no JSON sections, no machine-parseable reference
 ## Questions to Consider
 
 1. Should milestone scope files have a structured JSON/YAML section alongside the markdown narrative?
-2. Should the Strategy Planner produce a companion `milestone-N.json` with machine-parseable mappings?
+2. Should the Milestone Planner produce a companion `milestone-N.json` with machine-parseable mappings?
 3. Should the PRD Writer prompt include the structured mappings directly instead of relying on the AI to extract them from markdown?
-4. How much of the Strategy Planner's analytical work can be preserved in a way the pipeline code (not just the AI) can validate?
+4. How much of the Milestone Planner's analytical work can be preserved in a way the pipeline code (not just the AI) can validate?
 5. Does the milestone scope file need a schema that the pipeline validates before starting Phase 1?

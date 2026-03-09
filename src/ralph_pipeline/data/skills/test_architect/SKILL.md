@@ -1,6 +1,6 @@
 ---
 name: test_architect
-description: "Test Architect for the Ralph pipeline. Translates validated specifications into comprehensive test plans, feature-to-test matrices, fixture designs, integration scenarios, and runtime safety specifications. Produces docs/04-test-architecture/. Runs after Spec QA, before Strategy Planner. Triggers on: test architect, test plan, design tests, test strategy, test matrix, test architecture, plan tests."
+description: "Test Architect for the Ralph pipeline. Translates validated specifications into comprehensive test plans, feature-to-test matrices, fixture designs, integration scenarios, and runtime safety specifications. Produces docs/04-test-architecture/. Runs after Spec QA, before Milestone Planner. Triggers on: test architect, test plan, design tests, test strategy, test matrix, test architecture, plan tests."
 user-invocable: true
 ---
 
@@ -28,13 +28,13 @@ Your work closes the gap between the Software Architect's high-level testing str
 [3c]  Arch+AI Integrator      →  docs/03-integration/
 [4]   Spec QA                 →  docs/04-spec-qa/
 [4b]  Test Architect          →  docs/04-test-architecture/ ← YOU ARE HERE
-[5]   Strategy Planner        →  docs/05-milestones/
+[5]   Milestone Planner       →  docs/05-milestones/
 [6]   Pipeline Configurator   →  pipeline-config.json
 [7]   Pipeline Execution      →  ralph-pipeline run (automated)
 ```
 
 **Your input:** ALL validated spec docs from steps [1] through [4] + Spec QA verdict.
-**Your output:** `docs/04-test-architecture/` — consumed by the Strategy Planner (for test milestone considerations), PRD Writer (for per-story test cases), and QA Engineer (for validation against the test matrix).
+**Your output:** `docs/04-test-architecture/` — consumed by the Milestone Planner (for test milestone considerations), PRD Writer (for per-story test cases), and QA Engineer (for validation against the test matrix).
 
 ---
 
@@ -548,7 +548,7 @@ or unexpected input.
 
 **Entry:** Phase 5 complete.
 
-**Goal:** Produce the final status manifest and prepare the handoff to Strategy Planner.
+**Goal:** Produce the final status manifest and prepare the handoff to Milestone Planner.
 
 **No questions needed.** This phase is automatic.
 
@@ -559,7 +559,7 @@ or unexpected input.
    - Total test cases across all layers
    - Critical (P1) test count
    - Key risk areas identified in runtime safety
-4. Inform the user that the next step is to invoke the **Strategy Planner**
+4. Inform the user that the next step is to invoke the **Milestone Planner**
 
 **Output:** Final update to `docs/04-test-architecture/_status.md` + `docs/04-test-architecture/handover.json`
 
@@ -568,7 +568,7 @@ or unexpected input.
 ```json
 {
   "from": "test_architect",
-  "to": "strategy_planner",
+  "to": "milestone_planner",
   "timestamp": "[ISO timestamp]",
   "summary": "[Total test cases] test cases defined across [layers]. [P1 count] critical, [P2 count] important. [N] runtime safety specs. [N] integration scenarios.",
   "files_produced": [
@@ -597,8 +597,8 @@ or unexpected input.
   },
   "next_commands": [
     {
-      "skill": "strategy_planner",
-      "command": "/strategy_planner Read handover at docs/04-test-architecture/handover.json. All specs and test architecture ready for milestone planning.",
+      "skill": "milestone_planner",
+      "command": "/milestone_planner Read handover at docs/04-test-architecture/handover.json. All specs and test architecture ready for milestone planning.",
       "description": "Start milestone planning and execution strategy"
     }
   ]
@@ -638,7 +638,7 @@ or unexpected input.
 
 ## Handoff
 - **Ready:** [true/false]
-- **Next specialist:** Strategy Planner (`/strategy_planner`)
+- **Next specialist:** Milestone Planner (`/milestone_planner`)
 - **Files produced:**
   - [list all docs/04-test-architecture/*.md files]
 - **Required input for next specialist:**
@@ -662,7 +662,7 @@ Your test architecture feeds into multiple downstream skills. Here is how each u
 - Each user story's acceptance criteria should reference which tests from the matrix must pass
 - The PRD Writer adds a `Testing:` line in the Notes section pointing to relevant test IDs
 
-### Strategy Planner
+### Milestone Planner
 - Reads `test-plan.md` to understand testing overhead per milestone
 - Reads `integration-scenarios.md` to identify cross-milestone test dependencies
 - May create dedicated "test infrastructure" stories in foundation milestones
@@ -712,7 +712,7 @@ When starting a fresh session (Spec QA handoff ready):
 >
 > We'll work through six areas: **test plan** (layers, tools, coverage), **test matrix** (feature-to-test mapping), **test fixtures** (shared data and mocks), **integration scenarios** (cross-feature tests), **runtime safety** (loops, state machines, timeouts), and **handoff**.
 >
-> My output feeds directly into the PRD Writer (test cases per story), Strategy Planner (test considerations for milestones), and QA Engineer (verification checklist).
+> My output feeds directly into the PRD Writer (test cases per story), Milestone Planner (test considerations for milestones), and QA Engineer (verification checklist).
 >
 > Let me start with the test plan.
 >
