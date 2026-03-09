@@ -366,12 +366,12 @@ export function PhaseFSM({
   const hasBugfixCycles = milestone.bugfix_cycle > 0;
 
   // Layout constants
-  const NODE_W = 130;
-  const NODE_H = 48;
-  const GAP_X = 32;
+  const NODE_W = 148;
+  const NODE_H = 52;
+  const GAP_X = 28;
   const OFFSET_Y = 28;
   const totalWidth = phases.length * NODE_W + (phases.length - 1) * GAP_X;
-  const svgHeight = isPhase0 ? 90 : hasBugfixCycles || !isPhase0 ? 120 : 90;
+  const svgHeight = isPhase0 ? 100 : hasBugfixCycles || !isPhase0 ? 140 : 100;
   const svgWidth = totalWidth + 16;
 
   // Find indices for bugfix arc

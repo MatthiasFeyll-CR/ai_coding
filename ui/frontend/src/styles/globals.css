@@ -5,12 +5,28 @@
 @layer base {
   body {
     @apply bg-bg-primary text-text-primary font-sans antialiased;
-    background-image: linear-gradient(
-      to top left,
-      rgba(16, 185, 129, 0.10) 0%,
-      rgba(6, 182, 212, 0.06) 20%,
-      transparent 40%
-    );
+    background-image:
+      /* Subtle dot grid */
+      radial-gradient(circle, rgba(6, 182, 212, 0.06) 1px, transparent 1px),
+      /* Multi-color gradient overlay */
+      linear-gradient(
+        135deg,
+        rgba(16, 185, 129, 0.10) 0%,
+        rgba(6, 182, 212, 0.07) 25%,
+        rgba(124, 58, 237, 0.06) 50%,
+        rgba(59, 130, 246, 0.05) 75%,
+        transparent 100%
+      ),
+      linear-gradient(
+        to top left,
+        rgba(16, 185, 129, 0.08) 0%,
+        rgba(6, 182, 212, 0.05) 30%,
+        transparent 60%
+      );
+    background-size:
+      24px 24px,
+      100% 100%,
+      100% 100%;
     background-attachment: fixed;
     min-height: 100vh;
   }
@@ -92,7 +108,7 @@
   }
 
   .section-header h3 {
-    @apply text-sm font-semibold tracking-wide text-text-primary;
+    @apply text-base font-semibold tracking-wide text-text-primary;
   }
 
   .section-header .section-subtitle {
@@ -100,6 +116,6 @@
     background: none;
     -webkit-background-clip: initial;
     background-clip: initial;
-    @apply text-xs text-text-muted font-normal;
+    @apply text-sm text-text-muted font-normal;
   }
 }

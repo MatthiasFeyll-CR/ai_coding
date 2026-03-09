@@ -6,7 +6,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
 import { BookOpenIcon, PlusIcon, SettingsIcon } from 'lucide-react';
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const STATUS_CONFIG: Record<string, { color: string; label: string; description: string }> = {
   initialized: {
@@ -108,7 +108,9 @@ export function Sidebar() {
       {/* Header */}
       <div className="p-4 border-b border-border-subtle flex items-center justify-between">
         {!sidebarCollapsed && (
-          <h2 className="text-lg font-semibold text-accent-cyan">Pipeline Executor</h2>
+          <Link to="/dashboard" className="text-lg font-semibold text-accent-cyan hover:text-accent-cyan/80 transition-colors">
+            Pipeline Executor
+          </Link>
         )}
         <button
           onClick={toggleSidebar}
@@ -160,7 +162,7 @@ export function Sidebar() {
                 'w-full rounded-lg text-left transition-colors',
                 'hover:bg-bg-tertiary',
                 sidebarCollapsed ? 'p-2 flex items-center justify-center' : 'p-3',
-                activeProject?.id === project.id &&
+                activeProject?.id === project.id && !isSettingsActive && !isDocsActive &&
                   'bg-bg-tertiary border-l-4 border-accent-cyan'
               )}
               whileHover={{ scale: 1.02 }}

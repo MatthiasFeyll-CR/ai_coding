@@ -7,6 +7,7 @@ import { ReinstantiateModal } from './components/modals/ReinstantiateModal';
 import { DashboardPage } from './pages/DashboardPage';
 import { DocumentationPage } from './pages/DocumentationPage';
 import { EditorPage } from './pages/EditorPage';
+import { ProjectsOverview } from './pages/ProjectsOverview';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
@@ -16,7 +17,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="dashboard" element={<ProjectsOverview />} />
           <Route path="dashboard/:projectId" element={<DashboardPage />} />
           <Route path="editor" element={<EditorPage />} />
           <Route path="editor/:projectId" element={<EditorPage />} />

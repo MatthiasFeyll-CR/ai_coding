@@ -3,25 +3,29 @@ import type { TokenUsage } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  CoinsIcon,
-  CpuIcon,
-  DatabaseIcon,
-  LayersIcon,
-  ZapIcon,
+    AlertTriangleIcon,
+    CoinsIcon,
+    CpuIcon,
+    DatabaseIcon,
+    LayersIcon
 } from 'lucide-react';
 import { useState } from 'react';
 import {
+    Area,
     Bar,
     BarChart,
     CartesianGrid,
     Cell,
+    ComposedChart,
     Legend,
+    Line,
     Pie,
     PieChart,
+    ReferenceLine,
     ResponsiveContainer,
     Tooltip,
     XAxis,
-    YAxis,
+    YAxis
 } from 'recharts';
 
 interface TokenDashboardProps {
@@ -105,9 +109,9 @@ function KpiCard({ label, value, subtitle, icon, accentClass, glowClass }: KpiCa
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <p className="text-text-muted text-xs font-medium uppercase tracking-wider">{label}</p>
+          <p className="text-text-muted text-sm font-medium uppercase tracking-wider">{label}</p>
           <p className={`text-2xl font-bold ${accentClass}`}>{value}</p>
-          {subtitle && <p className="text-text-muted text-xs">{subtitle}</p>}
+          {subtitle && <p className="text-text-muted text-sm">{subtitle}</p>}
         </div>
         <div className={`p-2.5 rounded-lg bg-bg-tertiary ${accentClass}`}>
           {icon}
@@ -133,8 +137,8 @@ function ChartCard({ title, subtitle, children }: ChartCardProps) {
       className="bg-bg-secondary rounded-xl border border-border-subtle p-5"
     >
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
-        {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
+        <h3 className="text-base font-semibold text-text-primary">{title}</h3>
+        {subtitle && <p className="text-sm text-text-muted mt-0.5">{subtitle}</p>}
       </div>
       {children}
     </motion.div>
@@ -143,12 +147,22 @@ function ChartCard({ title, subtitle, children }: ChartCardProps) {
 
 // ── Custom Tooltip ──────────────────────────────────────────────────────────
 
-const tooltipStyle = {
-  backgroundColor: '#111827',
-  border: '1px solid #374151',
+const tooltipStyle: React.CSSProperties = {
+  backgroundColor: '#1f2937',
+  border: '1px solid #4b5563',
   borderRadius: '8px',
-  fontSize: '12px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+  fontSize: '13px',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+  color: '#f9fafb',
+};
+
+const tooltipLabelStyle: React.CSSProperties = {
+  color: '#f9fafb',
+  fontWeight: 600,
+};
+
+const tooltipItemStyle: React.CSSProperties = {
+  color: '#e5e7eb',
 };
 
 // ── Main Component ──────────────────────────────────────────────────────────
@@ -160,6 +174,15 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
     queryKey: ['tokens', projectId],
     queryFn: () => pipelineApi.getTokens(projectId!).then((res) => res.data),
     enabled: !!projectId,
+    refetchInterval: 5000,
+  });
+
+  // Fetch overview for budget + milestone counts (used for forecast)
+  const { data: overviewData } = useQuery({
+    queryKey: ['overview', projectId],
+    queryFn: () => pipelineApi.getOverview(projectId!).then((res) => res.data),
+    enabled: !!projectId,
+    refetchInterval: 5000,
   });
 
   if (isLoading) {
@@ -175,12 +198,46 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
 
   if (!tokenData || tokenData.total.invocations === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-center">
-        <CoinsIcon className="w-12 h-12 text-text-muted mb-3" />
-        <h3 className="text-lg font-semibold text-text-primary mb-1">No Cost Data Yet</h3>
-        <p className="text-text-muted text-sm max-w-md">
-          Cost tracking data will appear here once the pipeline starts running AI invocations.
-        </p>
+      <div className="relative">
+        {/* Placeholder skeleton layout */}
+        <div className="space-y-6 pointer-events-none select-none">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {['Total Cost', 'Total Tokens', 'Cache Savings', 'Models Used'].map((label) => (
+              <div key={label} className="bg-bg-secondary rounded-xl border border-border-subtle p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-9 h-9 rounded-lg bg-bg-tertiary" />
+                  <span className="text-xs text-text-muted uppercase tracking-wider">{label}</span>
+                </div>
+                <div className="h-8 w-20 bg-bg-tertiary rounded" />
+                <div className="h-3 w-32 bg-bg-tertiary rounded mt-2" />
+              </div>
+            ))}
+          </div>
+          <div className="bg-bg-secondary rounded-xl border border-border-subtle p-5">
+            <div className="h-4 w-32 bg-bg-tertiary rounded mb-4" />
+            <div className="h-[220px] bg-bg-tertiary/50 rounded" />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-bg-secondary rounded-xl border border-border-subtle p-5">
+              <div className="h-4 w-28 bg-bg-tertiary rounded mb-4" />
+              <div className="h-[200px] bg-bg-tertiary/50 rounded" />
+            </div>
+            <div className="bg-bg-secondary rounded-xl border border-border-subtle p-5">
+              <div className="h-4 w-28 bg-bg-tertiary rounded mb-4" />
+              <div className="h-[200px] bg-bg-tertiary/50 rounded" />
+            </div>
+          </div>
+        </div>
+        {/* Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="bg-bg-secondary/70 backdrop-blur-sm border border-border-subtle rounded-2xl px-10 py-8 flex flex-col items-center text-center shadow-xl max-w-md">
+            <CoinsIcon className="w-10 h-10 text-text-muted mb-3 opacity-60" />
+            <h3 className="text-base font-semibold text-text-primary mb-1">No Cost Data Yet</h3>
+            <p className="text-text-muted text-sm leading-relaxed">
+              Cost tracking data will appear here once the pipeline starts running AI invocations.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -208,10 +265,12 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
   const phaseData = Object.entries(by_phase)
     .map(([phase, data]) => ({
       name: formatPhaseName(phase),
-      phase,
+      key: phase,
+      phase: formatPhaseName(phase),
       cost: data.cost_usd,
       input: data.input_tokens,
       output: data.output_tokens,
+      cached: data.cache_read_tokens ?? 0,
       invocations: data.invocations,
     }))
     .sort((a, b) => b.cost - a.cost);
@@ -242,6 +301,170 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
     }
     return (b.id ?? 0) - (a.id ?? 0);
   });
+
+  // Cumulative cost over time (chronological order)
+  const cumulativeCostData = (() => {
+    const chronological = [...history].sort((a, b) => {
+      if (a.created_at && b.created_at) {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      return (a.id ?? 0) - (b.id ?? 0);
+    });
+    let running = 0;
+    return chronological.map((h, i) => {
+      running += h.cost_usd;
+      return {
+        idx: i + 1,
+        cumulative: running,
+        cost: h.cost_usd,
+        phase: formatPhaseName(h.phase || 'unknown'),
+        time: h.created_at ? new Date(h.created_at).toLocaleTimeString() : `#${i + 1}`,
+      };
+    });
+  })();
+
+  // ── Cost Forecast Computation ─────────────────────────────────────────
+  // Uses per-phase token consumption from completed milestones, weighted
+  // by story count (effort proxy), and projected using the pricing model
+  // of each phase to estimate costs for remaining milestones.
+  const forecastData = (() => {
+    const completedMilestones = overviewData?.progress.completed_milestones ?? 0;
+    const totalMilestones = overviewData?.progress.total_milestones ?? 0;
+    const remainingMilestones = totalMilestones - completedMilestones;
+    const budgetUsd = overviewData?.cost.budget_usd ?? 0;
+    const milestoneDetails = overviewData?.milestone_details ?? [];
+
+    // Need at least 1 completed milestone to forecast
+    if (completedMilestones < 1 || remainingMilestones <= 0 || cumulativeCostData.length === 0) {
+      return { points: [] as typeof cumulativeCostData, forecastTotal: 0, budgetUsd, method: 'none' as const };
+    }
+
+    // Gather completed and remaining milestones (excluding Phase 0 id=0)
+    const completedMs = milestoneDetails.filter(m => m.completed && m.id !== 0);
+    const remainingMs = milestoneDetails.filter(m => !m.completed && m.id !== 0);
+
+    // Total stories in completed milestones (for per-story rate)
+    const completedStories = completedMs.reduce((s, m) => s + (m.stories || 1), 0);
+    const remainingStories = remainingMs.reduce((s, m) => s + (m.stories || 1), 0);
+
+    // Phase 0 is a one-time cost - isolate it
+    const phase0Cost = by_milestone['0']?.cost_usd ?? 0;
+    const milestoneCosts = total.cost_usd - phase0Cost;
+
+    // --- Per-phase cost-per-story approach ---
+    // Get actual per-phase costs (excluding phase0 phases)
+    const phase0Phases = ['phase0_scaffolding', 'phase0_test_infra', 'phase0_lifecycle'];
+    const milestonePhases = Object.entries(by_phase)
+      .filter(([key]) => !phase0Phases.includes(key));
+
+    let forecastRemaining: number;
+    let method: 'per_story' | 'median' | 'average';
+
+    if (completedStories > 0 && milestonePhases.length > 0) {
+      // Method 1: Per-phase cost-per-story rate × remaining stories
+      // Each phase has a cost rate per story from completed milestones
+      const costPerStoryByPhase = milestonePhases.map(([phaseName, data]) => ({
+        phase: phaseName,
+        costPerStory: data.cost_usd / completedStories,
+        totalCost: data.cost_usd,
+      }));
+
+      // Total cost per story across all phases
+      const totalCostPerStory = costPerStoryByPhase.reduce((s, p) => s + p.costPerStory, 0);
+
+      // Project remaining cost based on remaining stories
+      forecastRemaining = totalCostPerStory * remainingStories;
+      method = 'per_story';
+    } else {
+      // Fallback: use median of per-milestone costs
+      const mCosts = Object.entries(by_milestone)
+        .filter(([k]) => k !== '0')
+        .map(([, data]) => data.cost_usd)
+        .sort((a, b) => a - b);
+
+      let avgCostPerMs: number;
+      if (mCosts.length >= 2) {
+        const mid = Math.floor(mCosts.length / 2);
+        avgCostPerMs = mCosts.length % 2 === 0
+          ? (mCosts[mid - 1] + mCosts[mid]) / 2
+          : mCosts[mid];
+        method = 'median';
+      } else {
+        avgCostPerMs = mCosts.length > 0 ? mCosts[0] : milestoneCosts / Math.max(1, completedMs.length);
+        method = 'average';
+      }
+      forecastRemaining = avgCostPerMs * remainingMs.length;
+    }
+
+    const forecastTotal = total.cost_usd + forecastRemaining;
+
+    // Estimate invocations per milestone from history (excluding phase0)
+    const nonPhase0History = history.filter(h => h.milestone_id !== 0);
+    const actualComplete = completedMs.length || 1;
+    const avgInvocationsPerMilestone = Math.max(
+      Math.round(nonPhase0History.length / actualComplete), 3
+    );
+
+    // Generate forecast points
+    const lastIdx = cumulativeCostData.length;
+    const lastCumulative = cumulativeCostData[cumulativeCostData.length - 1].cumulative;
+    const forecastPoints: Array<{ idx: number; cumulative?: number; forecast: number; cost: number; phase: string; time: string }> = [];
+
+    // Bridge point
+    forecastPoints.push({
+      idx: lastIdx,
+      cumulative: lastCumulative,
+      forecast: lastCumulative,
+      cost: 0,
+      phase: 'Forecast',
+      time: 'Forecast start',
+    });
+
+    // Distribute remaining cost by each remaining milestone's story weight
+    const totalRemainingStories = remainingMs.reduce((s, m) => s + (m.stories || 1), 0);
+    let runningForecast = lastCumulative;
+
+    for (let i = 0; i < remainingMs.length; i++) {
+      const m = remainingMs[i];
+      const storyWeight = totalRemainingStories > 0
+        ? (m.stories || 1) / totalRemainingStories
+        : 1 / remainingMs.length;
+      const mCost = forecastRemaining * storyWeight;
+      runningForecast += mCost;
+
+      forecastPoints.push({
+        idx: lastIdx + avgInvocationsPerMilestone * (i + 1),
+        forecast: runningForecast,
+        cost: mCost,
+        phase: 'Forecast',
+        time: `Projected M${m.id} (${m.stories || '?'} stories)`,
+      });
+    }
+
+    return { points: forecastPoints, forecastTotal, budgetUsd, method };
+  })();
+
+  // Merge actual + forecast data for the combined chart
+  const combinedCostData = (() => {
+    const actual = cumulativeCostData.map((d) => ({
+      ...d,
+      forecast: undefined as number | undefined,
+    }));
+
+    if (forecastData.points.length > 0) {
+      // Replace the bridge point (first forecast point has same idx as last actual)
+      const forecastPoints = forecastData.points.slice(1).map((d) => ({
+        ...d,
+        cumulative: undefined as number | undefined,
+      }));
+      // Add forecast value to the last actual point (bridge)
+      if (actual.length > 0) {
+        actual[actual.length - 1].forecast = actual[actual.length - 1].cumulative;
+      }
+      return [...actual, ...forecastPoints];
+    }
+    return actual;
+  })();
 
   return (
     <div className="space-y-6">
@@ -281,6 +504,129 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
         />
       </div>
 
+      {/* ── Cumulative Cost Line Chart with Forecast ────────────────────── */}
+      {cumulativeCostData.length > 1 && (
+        <ChartCard title="Cumulative Cost" subtitle="Running total spend over invocations">
+          <div className="flex gap-4">
+            {/* Chart */}
+            <div className="flex-1 min-w-0">
+              <ResponsiveContainer width="100%" height={260}>
+                <ComposedChart data={combinedCostData} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                  <defs>
+                    <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="forecastGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#a855f7" stopOpacity={0.1} />
+                      <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                  <XAxis
+                    dataKey="idx"
+                    stroke="#6b7280"
+                    fontSize={12}
+                    label={{ value: 'Invocation #', position: 'insideBottom', offset: -2, fill: '#6b7280', fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke="#6b7280"
+                    fontSize={12}
+                    tickFormatter={(v) => formatCost(v)}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelStyle={tooltipLabelStyle}
+                    itemStyle={tooltipItemStyle}
+                    labelFormatter={(label) => `Invocation #${label}`}
+                    formatter={(value: number, name: string) => {
+                      if (value === undefined || value === null) return [null, null];
+                      if (name === 'forecast') return [formatCost(value), 'Forecast'];
+                      return [formatCost(value), name === 'cumulative' ? 'Running Total' : 'This Call'];
+                    }}
+                  />
+                  {/* Budget reference line */}
+                  {forecastData.budgetUsd > 0 && (
+                    <ReferenceLine
+                      y={forecastData.budgetUsd}
+                      stroke="#f59e0b"
+                      strokeDasharray="8 4"
+                      strokeWidth={1.5}
+                      label={{
+                        value: `Budget ${formatCost(forecastData.budgetUsd)}`,
+                        position: 'right',
+                        fill: '#f59e0b',
+                        fontSize: 12,
+                      }}
+                    />
+                  )}
+                  <Area
+                    type="monotone"
+                    dataKey="cumulative"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    fill="url(#costGradient)"
+                    dot={false}
+                    activeDot={{ r: 4, fill: '#06b6d4', stroke: '#111827', strokeWidth: 2 }}
+                    connectNulls={false}
+                  />
+                  {forecastData.points.length > 0 && (
+                    <Line
+                      type="monotone"
+                      dataKey="forecast"
+                      stroke="#a855f7"
+                      strokeWidth={2}
+                      strokeDasharray="6 4"
+                      dot={{ r: 3, fill: '#a855f7', stroke: '#111827', strokeWidth: 2 }}
+                      activeDot={{ r: 5, fill: '#a855f7', stroke: '#111827', strokeWidth: 2 }}
+                      connectNulls={true}
+                    />
+                  )}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Forecast budget indicator (right side) */}
+            {forecastData.points.length > 0 && (
+              <div className="flex flex-col items-center justify-center w-28 shrink-0 gap-3 border-l border-border-subtle pl-4">
+                <div className="text-center">
+                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Forecast</p>
+                  <p className="text-lg font-bold text-accent-purple">{formatCost(forecastData.forecastTotal)}</p>
+                </div>
+                {forecastData.budgetUsd > 0 && (
+                  <div className="text-center">
+                    <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Budget</p>
+                    <p className={`text-lg font-bold ${forecastData.forecastTotal > forecastData.budgetUsd ? 'text-status-error' : 'text-status-success'}`}>
+                      {formatCost(forecastData.budgetUsd)}
+                    </p>
+                    {forecastData.forecastTotal > forecastData.budgetUsd && (
+                      <p className="text-xs text-status-error mt-1">
+                        +{formatCost(forecastData.forecastTotal - forecastData.budgetUsd)} over
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Forecast disclaimer */}
+          {forecastData.points.length > 0 && (
+            <div className="flex items-start gap-2 mt-3 pt-3 border-t border-border-subtle">
+              <AlertTriangleIcon className="w-3.5 h-3.5 text-status-warning shrink-0 mt-0.5" />
+              <p className="text-xs text-text-muted leading-relaxed">
+                {forecastData.method === 'per_story'
+                  ? 'Forecast uses per-phase cost rates from completed milestones, weighted by user story count for each remaining milestone.'
+                  : forecastData.method === 'median'
+                  ? 'Forecast uses the median cost of completed milestones. More data will improve accuracy.'
+                  : 'Forecast is a rough estimate based on the average cost of completed milestones. Actual costs may differ significantly.'
+                }
+              </p>
+            </div>
+          )}
+        </ChartCard>
+      )}
+
       {/* ── Row 1: Cost by Model + Cost by Phase ─────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Cost by Model — Horizontal Bar */}
@@ -288,17 +634,19 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
           <ResponsiveContainer width="100%" height={Math.max(200, modelData.length * 48)}>
             <BarChart data={modelData} layout="vertical" margin={{ left: 20, right: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" horizontal={false} />
-              <XAxis type="number" stroke="#6b7280" fontSize={11} tickFormatter={(v) => formatCost(v)} />
-              <YAxis type="category" dataKey="name" stroke="#6b7280" fontSize={11} width={100} />
+              <XAxis type="number" stroke="#6b7280" fontSize={12} tickFormatter={(v) => formatCost(v)} />
+              <YAxis type="category" dataKey="name" stroke="#6b7280" fontSize={12} width={100} />
               <Tooltip
                 contentStyle={tooltipStyle}
+                labelStyle={tooltipLabelStyle}
+                itemStyle={tooltipItemStyle}
+                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 formatter={(value: number, name: string) => {
                   if (name === 'cost') return [formatCost(value), 'Cost'];
                   return [value, name];
                 }}
-                labelStyle={{ color: '#f9fafb', fontWeight: 600 }}
               />
-              <Bar dataKey="cost" radius={[0, 4, 4, 0]}>
+              <Bar dataKey="cost" radius={[0, 4, 4, 0]} label={{ position: 'right', fill: '#9ca3af', fontSize: 12, formatter: (v: number) => formatCost(v) }}>
                 {modelData.map((_, index) => (
                   <Cell key={`model-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 ))}
@@ -312,19 +660,21 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={phaseData} margin={{ bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-              <XAxis dataKey="name" stroke="#6b7280" fontSize={11} />
-              <YAxis stroke="#6b7280" fontSize={11} tickFormatter={(v) => formatCost(v)} />
+              <XAxis dataKey="name" stroke="#6b7280" fontSize={12} />
+              <YAxis stroke="#6b7280" fontSize={12} tickFormatter={(v) => formatCost(v)} />
               <Tooltip
                 contentStyle={tooltipStyle}
+                labelStyle={tooltipLabelStyle}
+                itemStyle={tooltipItemStyle}
+                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 formatter={(value: number, name: string) => {
                   if (name === 'Cost') return [formatCost(value), 'Cost'];
                   return [formatTokens(value), name];
                 }}
-                labelStyle={{ color: '#f9fafb', fontWeight: 600 }}
               />
-              <Bar dataKey="cost" name="Cost" radius={[4, 4, 0, 0]}>
+              <Bar dataKey="cost" name="Cost" radius={[4, 4, 0, 0]} label={{ position: 'top', fill: '#9ca3af', fontSize: 12, formatter: (v: number) => formatCost(v) }}>
                 {phaseData.map((entry) => (
-                  <Cell key={entry.phase} fill={PHASE_COLORS[entry.phase] || '#6b7280'} />
+                  <Cell key={entry.key} fill={PHASE_COLORS[entry.key] || '#6b7280'} />
                 ))}
               </Bar>
             </BarChart>
@@ -340,14 +690,16 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={milestoneBarData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                <XAxis dataKey="name" stroke="#6b7280" fontSize={11} />
-                <YAxis stroke="#6b7280" fontSize={11} tickFormatter={(v) => formatTokens(v)} />
+                <XAxis dataKey="name" stroke="#6b7280" fontSize={12} />
+                <YAxis stroke="#6b7280" fontSize={12} tickFormatter={(v) => formatTokens(v)} />
                 <Tooltip
                   contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
+                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   formatter={(value: number, name: string) => [formatTokens(value), name]}
-                  labelStyle={{ color: '#f9fafb', fontWeight: 600 }}
                 />
-                <Legend wrapperStyle={{ fontSize: '11px' }} />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
                 <Bar dataKey="input" stackId="a" fill="#06b6d4" name="Input" />
                 <Bar dataKey="output" stackId="a" fill="#a855f7" name="Output" />
                 <Bar dataKey="cached" stackId="a" fill="#374151" name="Cached" radius={[4, 4, 0, 0]} />
@@ -377,10 +729,12 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
                 </Pie>
                 <Tooltip
                   contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
                   formatter={(value: number) => [formatCost(value), 'Cost']}
                 />
                 <Legend
-                  wrapperStyle={{ fontSize: '11px' }}
+                  wrapperStyle={{ fontSize: '12px' }}
                   formatter={(value) => <span className="text-text-secondary">{value}</span>}
                 />
               </PieChart>
@@ -395,7 +749,7 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
         {/* Phase detail mini-table filling the remaining col */}
         <ChartCard title="Phase Details" subtitle="Tokens and invocations per phase">
           <div className="overflow-auto max-h-[280px]">
-            <table className="w-full text-xs">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="text-text-muted border-b border-border-subtle">
                   <th className="text-left py-2 pr-3 font-medium">Phase</th>
@@ -406,12 +760,12 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
               </thead>
               <tbody>
                 {phaseData.map((row) => (
-                  <tr key={row.phase} className="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
+                  <tr key={row.key} className="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
                     <td className="py-2 pr-3">
                       <div className="flex items-center gap-2">
                         <div
                           className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: PHASE_COLORS[row.phase] || '#6b7280' }}
+                          style={{ backgroundColor: PHASE_COLORS[row.key] || '#6b7280' }}
                         />
                         <span className="text-text-primary">{row.name}</span>
                       </div>
@@ -432,6 +786,105 @@ export function TokenDashboard({ projectId }: TokenDashboardProps) {
           </div>
         </ChartCard>
       </div>
+
+      {/* ── Cache Savings Per Phase ──────────────────────────────────────── */}
+      {phaseData.length > 0 && (
+        <ChartCard title="Cache Savings by Phase" subtitle="Cache read tokens saved per pipeline phase">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Bar chart */}
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart
+                data={phaseData.map(p => {
+                  const totalIn = p.input + p.cached;
+                  const pct = totalIn > 0 ? (p.cached / totalIn) * 100 : 0;
+                  // Estimate cost savings: cached tokens priced at ~$3/MTok input rate
+                  const savedUsd = (p.cached / 1_000_000) * 3.0;
+                  return { name: p.phase, cachePercent: pct, cachedTokens: p.cached, savedUsd };
+                })}
+                layout="vertical"
+                margin={{ top: 5, right: 30, bottom: 5, left: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" horizontal={false} />
+                <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} stroke="#6b7280" fontSize={12} />
+                <YAxis type="category" dataKey="name" width={100} stroke="#6b7280" fontSize={12} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
+                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                  formatter={(value: number, name: string, props: { payload: { cachedTokens: number; savedUsd: number } }) => {
+                    if (name === 'cachePercent') {
+                      return [`${value.toFixed(1)}% (${formatTokens(props.payload.cachedTokens)} tokens, ~${formatCost(props.payload.savedUsd)} saved)`, 'Cache Hit'];
+                    }
+                    return [value, name];
+                  }}
+                />
+                <Bar dataKey="cachePercent" name="cachePercent" radius={[0, 4, 4, 0]} label={{ position: 'right', fill: '#9ca3af', fontSize: 12, formatter: (v: number) => `${v.toFixed(0)}%` }}>
+                  {phaseData.map((_, index) => {
+                    const totalIn = phaseData[index].input + phaseData[index].cached;
+                    const pct = totalIn > 0 ? (phaseData[index].cached / totalIn) * 100 : 0;
+                    return (
+                      <Cell
+                        key={`cache-${index}`}
+                        fill={pct >= 80 ? '#10b981' : pct >= 50 ? '#06b6d4' : '#6b7280'}
+                      />
+                    );
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+
+            {/* Summary table */}
+            <div className="overflow-auto max-h-[260px]">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-bg-secondary">
+                  <tr className="text-text-muted border-b border-border-subtle">
+                    <th className="text-left py-2 pr-3 font-medium">Phase</th>
+                    <th className="text-right py-2 px-2 font-medium">Input</th>
+                    <th className="text-right py-2 px-2 font-medium">Cached</th>
+                    <th className="text-right py-2 px-2 font-medium">Cache %</th>
+                    <th className="text-right py-2 pl-2 font-medium">~Saved</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {phaseData.map((row) => {
+                    const totalIn = row.input + row.cached;
+                    const pct = totalIn > 0 ? (row.cached / totalIn) * 100 : 0;
+                    const savedUsd = (row.cached / 1_000_000) * 3.0;
+                    return (
+                      <tr key={row.phase} className="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors">
+                        <td className="py-2 pr-3">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: PHASE_COLORS[row.key] || '#6b7280' }} />
+                            <span className="text-text-primary">{row.phase}</span>
+                          </div>
+                        </td>
+                        <td className="text-right py-2 px-2 text-accent-cyan font-mono">{formatTokens(row.input)}</td>
+                        <td className="text-right py-2 px-2 text-text-muted font-mono">{formatTokens(row.cached)}</td>
+                        <td className="text-right py-2 px-2 font-mono">
+                          <span className={pct >= 80 ? 'text-status-success' : pct >= 50 ? 'text-accent-cyan' : 'text-text-muted'}>
+                            {pct.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td className="text-right py-2 pl-2 text-status-success font-mono">{formatCost(savedUsd)}</td>
+                      </tr>
+                    );
+                  })}
+                  {/* Total row */}
+                  <tr className="border-t border-border-subtle font-medium">
+                    <td className="py-2 pr-3 text-text-primary">Total</td>
+                    <td className="text-right py-2 px-2 text-accent-cyan font-mono">{formatTokens(phaseData.reduce((s, r) => s + r.input, 0))}</td>
+                    <td className="text-right py-2 px-2 text-text-muted font-mono">{formatTokens(phaseData.reduce((s, r) => s + r.cached, 0))}</td>
+                    <td className="text-right py-2 px-2 text-accent-purple font-mono">{cacheHitRate.toFixed(1)}%</td>
+                    <td className="text-right py-2 pl-2 text-status-success font-mono">{formatCost((phaseData.reduce((s, r) => s + r.cached, 0) / 1_000_000) * 3.0)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </ChartCard>
+      )}
 
       {/* ── Invocation History ────────────────────────────────────────────── */}
       <ChartCard
@@ -489,8 +942,8 @@ function HistoryChart({ history }: { history: TokenUsage['history'] }) {
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-        <XAxis dataKey="idx" stroke="#6b7280" fontSize={10} label={{ value: 'Invocation #', position: 'insideBottom', offset: -2, fill: '#6b7280', fontSize: 10 }} />
-        <YAxis stroke="#6b7280" fontSize={10} tickFormatter={(v) => formatCost(v)} />
+        <XAxis dataKey="idx" stroke="#6b7280" fontSize={12} label={{ value: 'Invocation #', position: 'insideBottom', offset: -2, fill: '#6b7280', fontSize: 12 }} />
+        <YAxis stroke="#6b7280" fontSize={12} tickFormatter={(v) => formatCost(v)} />
         <Tooltip
           contentStyle={tooltipStyle}
           labelFormatter={(label) => `Invocation #${label}`}
@@ -509,59 +962,146 @@ function HistoryChart({ history }: { history: TokenUsage['history'] }) {
   );
 }
 
+// ── Sortable Table Header ────────────────────────────────────────────────────
+
+type SortDir = 'asc' | 'desc';
+
+function SortHeader({
+  label,
+  sortKey,
+  currentKey,
+  currentDir,
+  onSort,
+  align = 'left',
+  className = '',
+}: {
+  label: string;
+  sortKey: string;
+  currentKey: string;
+  currentDir: SortDir;
+  onSort: (key: string) => void;
+  align?: 'left' | 'right' | 'center';
+  className?: string;
+}) {
+  const active = currentKey === sortKey;
+  const textAlign = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+  return (
+    <th
+      className={`py-2 font-medium cursor-pointer select-none hover:text-text-primary transition-colors ${textAlign} ${className}`}
+      onClick={() => onSort(sortKey)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        <span className={`text-xs ${active ? 'text-accent-cyan' : 'text-text-muted/40'}`}>
+          {active ? (currentDir === 'asc' ? '▲' : '▼') : '⇅'}
+        </span>
+      </span>
+    </th>
+  );
+}
+
+function useSortable<T>(data: T[], defaultKey: string, defaultDir: SortDir = 'desc') {
+  const [sortKey, setSortKey] = useState(defaultKey);
+  const [sortDir, setSortDir] = useState<SortDir>(defaultDir);
+
+  const toggle = (key: string) => {
+    if (key === sortKey) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  };
+
+  const sorted = [...data].sort((a, b) => {
+    const av = (a as Record<string, unknown>)[sortKey];
+    const bv = (b as Record<string, unknown>)[sortKey];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    const cmp = typeof av === 'string' ? av.localeCompare(bv as string) : (av as number) - (bv as number);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  return { sorted, sortKey, sortDir, toggle };
+}
+
 // ── History Table ───────────────────────────────────────────────────────────
 
 function HistoryTable({ history }: { history: TokenUsage['history'] }) {
+  // Enrich rows with computed fields for sorting
+  const enriched = history.map(row => {
+    const totalInput = row.input_tokens + row.cache_read_tokens;
+    return {
+      ...row,
+      cachePercent: totalInput > 0 ? (row.cache_read_tokens / totalInput) * 100 : 0,
+      _time: row.created_at ? new Date(row.created_at).getTime() : row.id,
+      _milestone: row.milestone_id ?? -1,
+    };
+  });
+
+  const { sorted, sortKey, sortDir, toggle } = useSortable(enriched, '_time');
+
   return (
     <div className="overflow-auto max-h-[320px]">
-      <table className="w-full text-xs">
+      <table className="w-full text-sm">
         <thead className="sticky top-0 bg-bg-secondary">
           <tr className="text-text-muted border-b border-border-subtle">
-            <th className="text-left py-2 pr-3 font-medium">Time</th>
-            <th className="text-left py-2 px-2 font-medium">Phase</th>
-            <th className="text-left py-2 px-2 font-medium">Model</th>
-            <th className="text-right py-2 px-2 font-medium">In</th>
-            <th className="text-right py-2 px-2 font-medium">Out</th>
-            <th className="text-right py-2 px-2 font-medium">Cached</th>
-            <th className="text-right py-2 pl-2 font-medium">Cost</th>
+            <SortHeader label="Time" sortKey="_time" currentKey={sortKey} currentDir={sortDir} onSort={toggle} className="pr-3" />
+            <SortHeader label="Milestone" sortKey="_milestone" currentKey={sortKey} currentDir={sortDir} onSort={toggle} className="px-2" />
+            <SortHeader label="Phase" sortKey="phase" currentKey={sortKey} currentDir={sortDir} onSort={toggle} className="px-2" />
+            <SortHeader label="Model" sortKey="model" currentKey={sortKey} currentDir={sortDir} onSort={toggle} className="px-2" />
+            <SortHeader label="In" sortKey="input_tokens" currentKey={sortKey} currentDir={sortDir} onSort={toggle} align="right" className="px-2" />
+            <SortHeader label="Out" sortKey="output_tokens" currentKey={sortKey} currentDir={sortDir} onSort={toggle} align="right" className="px-2" />
+            <SortHeader label="Cached" sortKey="cache_read_tokens" currentKey={sortKey} currentDir={sortDir} onSort={toggle} align="right" className="px-2" />
+            <SortHeader label="Cache %" sortKey="cachePercent" currentKey={sortKey} currentDir={sortDir} onSort={toggle} align="right" className="px-2" />
+            <SortHeader label="Cost" sortKey="cost_usd" currentKey={sortKey} currentDir={sortDir} onSort={toggle} align="right" className="pl-2" />
           </tr>
         </thead>
         <tbody>
-          {history.map((row) => (
-            <tr
-              key={row.id}
-              className="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors"
-            >
-              <td className="py-2 pr-3 text-text-muted whitespace-nowrap">
-                {row.created_at
-                  ? new Date(row.created_at).toLocaleTimeString()
-                  : '—'}
-              </td>
-              <td className="py-2 px-2">
-                <div className="flex items-center gap-1.5">
-                  <div
-                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: PHASE_COLORS[row.phase || 'unknown'] || '#6b7280' }}
-                  />
-                  <span className="text-text-primary">{formatPhaseName(row.phase || 'unknown')}</span>
-                </div>
-              </td>
-              <td className="py-2 px-2 text-text-secondary font-mono">
-                {shortenModel(row.model)}
-              </td>
-              <td className="text-right py-2 px-2 text-accent-cyan font-mono">
-                {formatTokens(row.input_tokens)}
-              </td>
-              <td className="text-right py-2 px-2 text-accent-purple font-mono">
-                {formatTokens(row.output_tokens)}
-              </td>
-              <td className="text-right py-2 px-2 text-text-muted font-mono">
-                {formatTokens(row.cache_read_tokens)}
-              </td>
-              <td className="text-right py-2 pl-2 text-status-success font-mono font-medium">
-                {formatCost(row.cost_usd)}
-              </td>
-            </tr>
+          {sorted.map((row) => (
+              <tr
+                key={row.id}
+                className="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors"
+              >
+                <td className="py-2 pr-3 text-text-muted whitespace-nowrap">
+                  {row.created_at
+                    ? new Date(row.created_at).toLocaleTimeString()
+                    : '—'}
+                </td>
+                <td className="py-2 px-2 text-text-secondary font-mono">
+                  {row.milestone_id != null ? `M${row.milestone_id}` : '—'}
+                </td>
+                <td className="py-2 px-2">
+                  <div className="flex items-center gap-1.5">
+                    <div
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: PHASE_COLORS[row.phase || 'unknown'] || '#6b7280' }}
+                    />
+                    <span className="text-text-primary">{formatPhaseName(row.phase || 'unknown')}</span>
+                  </div>
+                </td>
+                <td className="py-2 px-2 text-text-secondary font-mono">
+                  {shortenModel(row.model)}
+                </td>
+                <td className="text-right py-2 px-2 text-accent-cyan font-mono">
+                  {formatTokens(row.input_tokens)}
+                </td>
+                <td className="text-right py-2 px-2 text-accent-purple font-mono">
+                  {formatTokens(row.output_tokens)}
+                </td>
+                <td className="text-right py-2 px-2 text-text-muted font-mono">
+                  {formatTokens(row.cache_read_tokens)}
+                </td>
+                <td className="text-right py-2 px-2 font-mono">
+                  <span className={row.cachePercent >= 80 ? 'text-status-success' : row.cachePercent >= 50 ? 'text-accent-cyan' : 'text-text-muted'}>
+                    {row.cachePercent.toFixed(1)}%
+                  </span>
+                </td>
+                <td className="text-right py-2 pl-2 text-status-success font-mono font-medium">
+                  {formatCost(row.cost_usd)}
+                </td>
+              </tr>
           ))}
         </tbody>
       </table>

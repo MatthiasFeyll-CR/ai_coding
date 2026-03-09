@@ -1,6 +1,8 @@
 import type {
   ExecutionLog,
   MilestonesResponse,
+  PipelineOverview,
+  PipelineRunStatus,
   PipelineState,
   PreCheckResult,
   Project,
@@ -30,7 +32,9 @@ export const projectsApi = {
     api.post<PreCheckResult>('/projects/pre-check', { project_path: projectPath }),
   setup: (projectPath: string) =>
     api.post('/projects/setup', { project_path: projectPath }),
-  getConfig: (id: number) => api.get(`/projects/${id}/config`),
+  getConfig: (id: number) => api.get<Record<string, unknown>>(`/projects/${id}/config`),
+  patchConfig: (id: number, updates: Record<string, unknown>) =>
+    api.patch<{ success: boolean }>(`/projects/${id}/config`, updates),
   getState: (id: number) => api.get<PipelineState>(`/projects/${id}/state`),
   listSnapshots: (id: number) =>
     api.get<StateSnapshot[]>(`/projects/${id}/snapshots`),
@@ -50,6 +54,10 @@ export const pipelineApi = {
     api.post(`/pipeline/${projectId}/start`, { milestone_id: milestoneId }),
   stop: (projectId: number) => api.post(`/pipeline/${projectId}/stop`),
   resume: (projectId: number) => api.post(`/pipeline/${projectId}/resume`),
+  status: (projectId: number) =>
+    api.get<PipelineRunStatus>(`/pipeline/${projectId}/status`),
+  getOverview: (projectId: number) =>
+    api.get<PipelineOverview>(`/pipeline/${projectId}/overview`),
   getLogs: (
     projectId: number,
     params?: { milestone_id?: number; phase?: string; limit?: number }
@@ -60,6 +68,13 @@ export const pipelineApi = {
     api.get<MilestonesResponse>(`/pipeline/${projectId}/milestones`),
   getTestAnalytics: (projectId: number) =>
     api.get<TestAnalytics>(`/pipeline/${projectId}/test-analytics`),
+  getLogFiles: (projectId: number) =>
+    api.get<{ directories: Record<string, string[]> }>(`/pipeline/${projectId}/logfiles`),
+  getLogFileContent: (projectId: number, logPath: string, tail?: number) =>
+    api.get<{ path: string; content: string; size: number }>(
+      `/pipeline/${projectId}/logfiles/${logPath}`,
+      { params: tail ? { tail } : undefined }
+    ),
 };
 
 // Files

@@ -1,47 +1,86 @@
 import { pipelineApi, projectsApi } from '@/api/client';
 import { SetupFlow } from '@/components/infrastructure/SetupFlow';
-import { ControlPanel } from '@/components/pipeline/ControlPanel';
-import { MilestoneDetail } from '@/components/pipeline/MilestoneDetail';
-import { MilestoneTimeline } from '@/components/pipeline/MilestoneTimeline';
+import { DeleteProjectModal } from '@/components/modals/DeleteProjectModal';
+import { OverviewDashboard } from '@/components/pipeline/OverviewDashboard';
+import { ParametersPanel } from '@/components/pipeline/ParametersPanel';
+import { PipelineStateView } from '@/components/pipeline/PipelineStateView';
+import { PipelineStatusBadge } from '@/components/pipeline/PipelineStatusBadge';
 import { TestAnalytics } from '@/components/pipeline/TestAnalytics';
 import { TokenDashboard } from '@/components/pipeline/TokenDashboard';
-import { Card } from '@/components/shared/Card';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { notify } from '@/lib/notify';
 import { useAppStore } from '@/store/appStore';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ActivityIcon,
   BeakerIcon,
   DollarSignIcon,
   FolderOpenIcon,
-  GitBranchIcon,
+  LayoutDashboardIcon,
+  LinkIcon,
   LockIcon,
+  SettingsIcon,
+  SlidersHorizontalIcon,
   WrenchIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
-type TabId = 'setup' | 'state' | 'git' | 'costs' | 'tests';
+type TabId = 'overview' | 'state' | 'costs' | 'tests' | 'params' | 'setup';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: 'setup', label: 'Setup', icon: <WrenchIcon className="w-4 h-4" /> },
+  { id: 'overview', label: 'Overview', icon: <LayoutDashboardIcon className="w-4 h-4" /> },
   { id: 'state', label: 'Pipeline State', icon: <ActivityIcon className="w-4 h-4" /> },
-  { id: 'git', label: 'Git Operations', icon: <GitBranchIcon className="w-4 h-4" /> },
   { id: 'costs', label: 'Cost Tracking', icon: <DollarSignIcon className="w-4 h-4" /> },
   { id: 'tests', label: 'Test Results', icon: <BeakerIcon className="w-4 h-4" /> },
+  { id: 'params', label: 'Parameters', icon: <SlidersHorizontalIcon className="w-4 h-4" /> },
+  { id: 'setup', label: 'Setup', icon: <WrenchIcon className="w-4 h-4" /> },
 ];
 
 export function DashboardPage() {
   const { activeProject, setActiveProject } = useAppStore();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const [tooltipTab, setTooltipTab] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [unlinkOpen, setUnlinkOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Read active tab from URL, default to 'state'
+  // Unlink project mutation
+  const unlinkMutation = useMutation({
+    mutationFn: (id: number) => projectsApi.delete(id),
+    onSuccess: (_data, deletedId) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      notify('success', 'Project unlinked successfully');
+      if (activeProject?.id === deletedId) {
+        setActiveProject(null);
+        navigate('/dashboard');
+      }
+    },
+    onError: () => {
+      notify('error', 'Failed to unlink project');
+    },
+  });
+
+  // Close settings menu on outside click
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      setSettingsOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (settingsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [settingsOpen, handleClickOutside]);
+
   const urlTab = searchParams.get('tab') as TabId | null;
-  const activeTab: TabId = urlTab && TABS.some((t) => t.id === urlTab) ? urlTab : 'state';
+  const activeTab: TabId = urlTab && TABS.some((t) => t.id === urlTab) ? urlTab : 'overview';
 
   const setActiveTab = (tab: TabId) => {
     setSearchParams({ tab }, { replace: true });
@@ -78,46 +117,16 @@ export function DashboardPage() {
   // Determine if non-setup tabs should be disabled
   const setupRequired = !!activeProject && !activeProject.is_setup;
 
-  // Fetch pipeline state (only poll when project is fully set up)
-  const { data: pipelineState } = useQuery({
-    queryKey: ['project-state', activeProject?.id],
-    queryFn: () => projectsApi.getState(activeProject!.id).then((res) => res.data),
-    enabled: !!activeProject?.id && !!activeProject?.is_setup,
-    refetchInterval: 5000,
-  });
-
   // Fetch enriched milestones (config + state)
   const { data: milestonesData } = useQuery({
     queryKey: ['milestones', activeProject?.id],
     queryFn: () => pipelineApi.getMilestones(activeProject!.id).then((res) => res.data),
     enabled: !!activeProject?.id && !!activeProject?.is_setup,
-    refetchInterval: 5000,
+    refetchInterval: 2000,
   });
 
   const milestones = milestonesData?.milestones ?? [];
   const maxBugfixCycles = milestonesData?.max_bugfix_cycles ?? 3;
-
-  const [selectedMilestoneId, setSelectedMilestoneId] = useState<number | null>(null);
-
-  // Auto-select the next milestone to process (or the current running one)
-  const effectiveMilestoneId = useMemo(() => {
-    if (selectedMilestoneId !== null) return selectedMilestoneId;
-    if (milestones.length === 0) return null;
-
-    // Find the running milestone or the first non-completed one
-    const running = milestones.find(
-      (m) => m.started_at && !m.completed_at && m.phase !== 'pending'
-    );
-    if (running) return running.id;
-
-    const nextPending = milestones.find((m) => !m.completed_at);
-    if (nextPending) return nextPending.id;
-
-    // All complete — show the last one
-    return milestones[milestones.length - 1].id;
-  }, [selectedMilestoneId, milestones]);
-
-  const selectedMilestone = milestones.find((m) => m.id === effectiveMilestoneId) ?? null;
 
   if (!activeProject) {
     return (
@@ -125,8 +134,8 @@ export function DashboardPage() {
         icon={FolderOpenIcon}
         title="No Project Selected"
         description="Select a project from the sidebar or link a new one to get started."
-        actionLabel="Link Project"
-        onAction={() => useAppStore.getState().openModal('linkProject')}
+        actionLabel="View Projects"
+        onAction={() => navigate('/dashboard')}
       />
     );
   }
@@ -141,8 +150,54 @@ export function DashboardPage() {
             {activeProject.root_path}
           </p>
         </div>
-        <ControlPanel />
+        <div className="flex items-center gap-3">
+          <PipelineStatusBadge />
+
+          {/* Settings dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setSettingsOpen((v) => !v)}
+              className="p-2 border border-border-emphasis text-text-secondary rounded-lg hover:bg-bg-hover hover:text-text-primary transition-colors"
+              aria-label="Project settings"
+            >
+              <SettingsIcon className="w-5 h-5" />
+            </button>
+
+            <AnimatePresence>
+              {settingsOpen && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute right-0 mt-2 z-50 w-48 py-1 bg-bg-secondary border border-border-subtle rounded-lg shadow-xl"
+                >
+                  <button
+                    onClick={() => {
+                      setSettingsOpen(false);
+                      setUnlinkOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-status-error hover:bg-bg-hover transition-colors"
+                  >
+                    <LinkIcon className="w-4 h-4" />
+                    Unlink project
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
+
+      <DeleteProjectModal
+        open={unlinkOpen}
+        projectName={activeProject?.name ?? ''}
+        onConfirm={() => {
+          if (activeProject) unlinkMutation.mutate(activeProject.id);
+          setUnlinkOpen(false);
+        }}
+        onCancel={() => setUnlinkOpen(false)}
+      />
 
       {/* Tabs */}
       <div className="border-b border-border-subtle">
@@ -205,77 +260,25 @@ export function DashboardPage() {
           transition={{ duration: 0.18, ease: 'easeInOut' }}
           className="flex-1"
         >
-        {activeTab === 'setup' && (
-          <SetupFlow project={activeProject} onSetupComplete={() => setActiveTab('state')} />
+        {activeTab === 'overview' && (
+          <OverviewDashboard
+            projectId={activeProject.id}
+            milestones={milestones}
+            pipelineStatus={activeProject.status}
+          />
         )}
 
         {activeTab === 'state' && (
-          <div className="flex gap-0 h-[calc(100vh-220px)] rounded-xl border border-white/[0.06] overflow-hidden">
-            {/* Left panel — Milestone Flow (30%) */}
-            <div className="w-[30%] border-r border-white/[0.06] flex flex-col bg-bg-secondary/50 backdrop-blur-xl">
-              <div className="section-header">
-                <ActivityIcon className="w-4 h-4 text-accent-green" />
-                <h3>Milestones</h3>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <MilestoneTimeline
-                  milestones={milestones}
-                  selectedMilestoneId={effectiveMilestoneId}
-                  pipelineStatus={activeProject.status}
-                  onSelectMilestone={setSelectedMilestoneId}
-                />
-              </div>
-            </div>
-
-            {/* Right panel — Milestone Detail (70%) */}
-            <div className="w-[70%] flex flex-col bg-bg-secondary/30 backdrop-blur-xl">
-              {selectedMilestone ? (
-                <MilestoneDetail
-                  projectId={activeProject.id}
-                  milestone={selectedMilestone}
-                  maxBugfixCycles={maxBugfixCycles}
-                  pipelineStatus={activeProject.status}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-text-muted">
-                  <p>Select a milestone to view details</p>
-                </div>
-              )}
-            </div>
-          </div>
+          <PipelineStateView
+            projectId={activeProject.id}
+            milestones={milestones}
+            maxBugfixCycles={maxBugfixCycles}
+            pipelineStatus={activeProject.status}
+          />
         )}
 
-        {activeTab === 'git' && (
-          <Card title="Git Operations">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-3">
-                <GitBranchIcon className="w-5 h-5 text-accent-cyan" />
-                <div>
-                  <p className="font-medium">
-                    Branch: {pipelineState?.git_branch || 'main'}
-                  </p>
-                  <p className="text-sm text-text-secondary">
-                    Git operations are managed automatically by the pipeline
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-bg-tertiary rounded-lg p-4">
-                <h4 className="text-sm font-medium mb-2">Recent Operations</h4>
-                {pipelineState?.git_log?.length ? (
-                  <div className="space-y-2">
-                    {pipelineState.git_log.map((entry, i) => (
-                      <p key={i} className="text-sm font-mono text-text-secondary">
-                        {entry}
-                      </p>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-text-muted">No git operations yet</p>
-                )}
-              </div>
-            </div>
-          </Card>
+        {activeTab === 'setup' && (
+          <SetupFlow project={activeProject} onSetupComplete={() => setActiveTab('overview')} />
         )}
 
         {activeTab === 'costs' && (
@@ -284,6 +287,10 @@ export function DashboardPage() {
 
         {activeTab === 'tests' && (
           <TestAnalytics projectId={activeProject.id} />
+        )}
+
+        {activeTab === 'params' && (
+          <ParametersPanel projectId={activeProject.id} />
         )}
         </motion.div>
       </AnimatePresence>

@@ -1,7 +1,7 @@
 import type { Project } from '@/types';
 import { create } from 'zustand';
 
-type ActiveTab = 'setup' | 'state' | 'git' | 'costs' | 'tests';
+type ActiveTab = 'overview' | 'state' | 'costs' | 'tests' | 'params' | 'setup';
 
 interface AppState {
   // UI State
@@ -36,7 +36,7 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarCollapsed: false,
   activeProject: null,
   theme: 'dark',
-  activeTab: 'state',
+  activeTab: 'overview',
   modals: {
     linkProject: false,
     modelSelector: false,

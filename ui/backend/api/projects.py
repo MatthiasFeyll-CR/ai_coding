@@ -235,6 +235,92 @@ def get_config(project_id):
         return jsonify({"error": "Config file not found"}), 404
 
 
+@bp.route("/<int:project_id>/config", methods=["PATCH"])
+def patch_config(project_id):
+    """Partially update pipeline-config.json.
+
+    Accepts a JSON body with dot-separated key paths, e.g.:
+      { "qa.max_bugfix_cycles": 5, "test_execution.timeout_seconds": 600 }
+
+    Performs lightweight validation (non-negative numbers where applicable)
+    and writes the updated config back atomically.
+    """
+    project = Project.query.get_or_404(project_id)
+    updates = request.json
+
+    if not updates or not isinstance(updates, dict):
+        return jsonify({"error": "Request body must be a non-empty JSON object"}), 400
+
+    config_path = Path(project.config_path)
+    if not config_path.exists():
+        return jsonify({"error": "Config file not found"}), 404
+
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        return jsonify({"error": f"Failed to read config: {exc}"}), 500
+
+    # ── Non-negative integer/float fields ────────────────────────────────
+    NON_NEGATIVE_FIELDS = {
+        "ralph.max_iterations_multiplier",
+        "ralph.stuck_threshold",
+        "qa.max_bugfix_cycles",
+        "gate_checks.max_fix_cycles",
+        "test_execution.timeout_seconds",
+        "test_execution.max_fix_cycles",
+        "test_execution.build_timeout_seconds",
+        "test_execution.setup_timeout_seconds",
+        "retry.max_retries",
+        "retry.backoff_seconds",
+        "cost.budget_usd",
+        "cost.warn_at_pct",
+        "context_limits.max_lines",
+        "context_limits.max_tokens",
+        "context_limits.warn_pct",
+        "context_limits.tokens_per_line",
+        "context_limits.fix_context_max_lines",
+    }
+
+    errors: list[str] = []
+
+    for key_path, value in updates.items():
+        # Validate non-negative numerics
+        if key_path in NON_NEGATIVE_FIELDS:
+            try:
+                num = float(value)
+                if num < 0:
+                    errors.append(f"{key_path}: must be non-negative")
+                    continue
+            except (TypeError, ValueError):
+                errors.append(f"{key_path}: must be a number")
+                continue
+
+        # Apply nested update
+        parts = key_path.split(".")
+        target = config
+        for part in parts[:-1]:
+            if part not in target or not isinstance(target[part], dict):
+                target[part] = {}
+            target = target[part]
+        target[parts[-1]] = value
+
+    if errors:
+        return jsonify({"error": "Validation failed", "details": errors}), 422
+
+    # Atomic write: write to tmp then rename
+    tmp_path = config_path.with_suffix(".tmp")
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(config, f, indent=2)
+            f.write("\n")
+        tmp_path.replace(config_path)
+    except OSError as exc:
+        return jsonify({"error": f"Failed to write config: {exc}"}), 500
+
+    return jsonify({"success": True})
+
+
 @bp.route("/<int:project_id>/state", methods=["GET"])
 def get_state(project_id):
     """Get current pipeline state."""

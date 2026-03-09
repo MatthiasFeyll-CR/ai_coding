@@ -51,6 +51,58 @@ export interface MilestonesResponse {
   max_bugfix_cycles: number;
 }
 
+// ── Pipeline Overview ───────────────────────────────────────────────────────
+
+export interface PipelineOverview {
+  project: {
+    name: string;
+    description: string;
+    root_path: string;
+    total_milestones: number;
+    total_stories: number;
+    models: Record<string, string>;
+    budget_usd: number;
+    max_bugfix_cycles: number;
+  };
+  progress: {
+    completed_milestones: number;
+    failed_milestones: number;
+    total_milestones: number;
+    percentage: number;
+    current_milestone: number;
+    current_milestone_name: string;
+    current_phase: string;
+  };
+  cost: {
+    total_usd: number;
+    budget_usd: number;
+    budget_pct: number;
+    by_milestone: Array<{ id: number; name: string; cost_usd: number }>;
+    by_phase: Record<string, number>;
+  };
+  quality: {
+    total_bugfix_cycles: number;
+    total_test_fix_cycles: number;
+    milestones_with_bugfixes: Array<{ id: number; cycles: number }>;
+  };
+  pipeline: {
+    running: boolean;
+    status: string;
+    lock: Record<string, unknown> | null;
+  };
+  milestone_details: Array<{
+    id: number;
+    name: string;
+    stories: number;
+    completed: boolean;
+  }>;
+}
+
+export interface PipelineRunStatus {
+  running: boolean;
+  lock: Record<string, unknown> | null;
+}
+
 export interface ExecutionLog {
   id: number;
   project_id: number;
@@ -86,6 +138,8 @@ export interface TokenUsage {
     {
       input_tokens: number;
       output_tokens: number;
+      cache_creation_tokens: number;
+      cache_read_tokens: number;
       cost_usd: number;
       invocations: number;
     }
@@ -95,6 +149,8 @@ export interface TokenUsage {
     {
       input_tokens: number;
       output_tokens: number;
+      cache_creation_tokens: number;
+      cache_read_tokens: number;
       cost_usd: number;
       invocations: number;
     }

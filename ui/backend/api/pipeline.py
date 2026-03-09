@@ -130,6 +130,60 @@ def pipeline_status(project_id):
     )
 
 
+@bp.route("/<int:project_id>/logfiles", methods=["GET"])
+def get_log_files(project_id):
+    """List available log files grouped by milestone/phase0 directory.
+
+    Returns a tree: { "phase0": ["scaffolding.log", ...], "m1-foundation": [...], ... }
+    """
+    project = Project.query.get_or_404(project_id)
+    logs_dir = Path(project.root_path) / ".ralph" / "logs"
+
+    if not logs_dir.is_dir():
+        return jsonify({"directories": {}})
+
+    directories: dict[str, list[str]] = {}
+    for child in sorted(logs_dir.iterdir()):
+        if child.is_dir():
+            files = sorted(
+                f.name for f in child.iterdir() if f.is_file() and f.suffix == ".log"
+            )
+            if files:
+                directories[child.name] = files
+
+    return jsonify({"directories": directories})
+
+
+@bp.route("/<int:project_id>/logfiles/<path:log_path>", methods=["GET"])
+def get_log_file_content(project_id, log_path):
+    """Read the content of a specific log file.
+
+    log_path should be e.g. "phase0/scaffolding.log" or "m1-foundation/ralph-iter-1.log".
+    Only serves .log files inside .ralph/logs/ for security.
+    """
+    project = Project.query.get_or_404(project_id)
+    logs_dir = Path(project.root_path) / ".ralph" / "logs"
+    target = (logs_dir / log_path).resolve()
+
+    # Security: ensure path is inside logs_dir
+    if not str(target).startswith(str(logs_dir.resolve())):
+        return jsonify({"error": "Invalid path"}), 403
+
+    if not target.is_file() or target.suffix != ".log":
+        return jsonify({"error": "Log file not found"}), 404
+
+    try:
+        # Read with tail support for large files
+        tail = request.args.get("tail", type=int)
+        content = target.read_text(errors="replace")
+        if tail:
+            lines = content.splitlines()
+            content = "\n".join(lines[-tail:])
+        return jsonify({"path": log_path, "content": content, "size": target.stat().st_size})
+    except OSError as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @bp.route("/<int:project_id>/logs", methods=["GET"])
 def get_logs(project_id):
     """Get execution logs."""
@@ -392,8 +446,6 @@ def _build_phase0_entry(state_path, phase0_path, state=None):
                 verification = json.load(f)
             if verification.get("verified"):
                 phase0["phase"] = "complete"
-                phase0["completed_at"] = phase0_path.stat().st_mtime
-                # Convert to ISO format
                 from datetime import datetime, timezone
 
                 phase0["completed_at"] = datetime.fromtimestamp(
@@ -402,19 +454,21 @@ def _build_phase0_entry(state_path, phase0_path, state=None):
         except (json.JSONDecodeError, KeyError):
             pass
 
-    # Check state.json cost data for phase0 activity to determine started_at
+    # Use explicit phase0 timestamps from state.json if available
     if state:
+        if state.get("phase0_started_at"):
+            phase0["started_at"] = state["phase0_started_at"]
+        if state.get("phase0_completed_at"):
+            phase0["completed_at"] = state["phase0_completed_at"]
+        if state.get("phase0_complete"):
+            phase0["phase"] = "complete"
+
         cost = state.get("cost", {})
         by_milestone = cost.get("by_milestone", {})
         if "0" in by_milestone or 0 in by_milestone:
             # Phase 0 has cost data, meaning it started
-            sessions = cost.get("sessions", [])
-            phase0_sessions = [s for s in sessions if s.get("milestone") == 0]
-            if phase0_sessions:
-                # Use the earliest session as started_at (approximate)
-                phase0["started_at"] = phase0_sessions[0].get("session_id", "")
-                # We don't have a direct timestamp but we know it ran
-                phase0["started_at"] = phase0.get("completed_at")  # approximate
+            if not phase0["started_at"]:
+                phase0["started_at"] = phase0.get("completed_at")
 
             # Determine current sub-phase if not complete
             if phase0["phase"] != "complete":
@@ -427,9 +481,214 @@ def _build_phase0_entry(state_path, phase0_path, state=None):
                     phase0["phase"] = "phase0_scaffolding"
                 else:
                     phase0["phase"] = "phase0_scaffolding"
-                phase0["started_at"] = phase0["completed_at"] or "unknown"
+                if not phase0["started_at"]:
+                    phase0["started_at"] = phase0["completed_at"] or "unknown"
 
     return phase0
+
+
+@bp.route("/<int:project_id>/overview", methods=["GET"])
+def get_overview(project_id):
+    """Aggregate overview data for the dashboard overview tab.
+
+    Returns project metadata, progress metrics, cost summary, quality
+    metrics, and pipeline running status in a single API call.
+    """
+    project = Project.query.get_or_404(project_id)
+    root = Path(project.root_path)
+    state_path = root / ".ralph" / "state.json"
+    config_path = Path(project.config_path)
+
+    # ── Load config ──────────────────────────────────────────────────────
+    config_data: dict = {}
+    config_milestones: list[dict] = []
+    models_config: dict = {}
+    budget_usd = 0.0
+    max_bugfix_cycles = 3
+    project_description = ""
+
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                config_data = json.load(f)
+            project_description = config_data.get("project", {}).get("description", "")
+            models_config = config_data.get("models", {})
+            budget_usd = config_data.get("cost", {}).get("budget_usd", 0.0)
+            max_bugfix_cycles = config_data.get("qa", {}).get("max_bugfix_cycles", 3)
+            for m in config_data.get("milestones", []):
+                if isinstance(m, dict):
+                    config_milestones.append({
+                        "id": m.get("id", 0),
+                        "name": m.get("name", f"M{m.get('id', '?')}"),
+                        "slug": m.get("slug", ""),
+                        "stories": m.get("stories", 0),
+                    })
+                else:
+                    config_milestones.append({
+                        "id": m,
+                        "name": f"Milestone {m}",
+                        "slug": f"m{m}",
+                        "stories": 0,
+                    })
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    total_milestones = len(config_milestones)
+    total_stories = sum(m.get("stories", 0) for m in config_milestones)
+
+    # ── Load state.json ──────────────────────────────────────────────────
+    state: dict = {}
+    milestone_states: dict[str, dict] = {}
+    cost_total = 0.0
+    cost_by_milestone: list[dict] = []
+
+    if state_path.exists():
+        try:
+            with open(state_path) as f:
+                state = json.load(f)
+            milestone_states = state.get("milestones", {})
+            cost_block = state.get("cost", {})
+            cost_total = cost_block.get("total_usd", 0.0)
+
+            # Cost by milestone
+            for mid_str, cost_val in cost_block.get("by_milestone", {}).items():
+                mid = int(mid_str)
+                name = next((m["name"] for m in config_milestones if m["id"] == mid), f"M{mid}")
+                cost_by_milestone.append({"id": mid, "name": name, "cost_usd": cost_val})
+            cost_by_milestone.sort(key=lambda x: x["id"])
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # ── Compute progress (including Phase 0) ─────────────────────────────
+    completed_milestones = sum(
+        1 for ms in milestone_states.values() if ms.get("phase") == "complete"
+    )
+    failed_milestones = sum(
+        1 for ms in milestone_states.values() if ms.get("phase") == "failed"
+    )
+    current_milestone_id = state.get("current_milestone", 0)
+    current_ms = milestone_states.get(str(current_milestone_id), {})
+    current_phase = current_ms.get("phase", "pending")
+    current_milestone_name = next(
+        (m["name"] for m in config_milestones if m["id"] == current_milestone_id),
+        f"M{current_milestone_id}",
+    )
+
+    # Phase 0 has 3 sub-phases; each milestone has 4 phases
+    phase0_sub_phases = 3  # scaffolding, test_infra, lifecycle
+    all_phases_count = phase0_sub_phases + total_milestones * 4
+    completed_phases = 0
+
+    # Count Phase 0 progress
+    phase0_complete = state.get("phase0_complete", False)
+    if phase0_complete:
+        completed_phases += phase0_sub_phases
+    else:
+        cost_by_phase = state.get("cost", {}).get("by_phase", {})
+        if "phase0_lifecycle" in cost_by_phase:
+            completed_phases += 2  # scaffolding + test_infra done
+        elif "phase0_test_infra" in cost_by_phase:
+            completed_phases += 1  # scaffolding done
+
+    # Count milestone progress
+    for ms in milestone_states.values():
+        phase = ms.get("phase", "pending")
+        if phase == "complete":
+            completed_phases += 4
+        elif phase == "reconciliation":
+            completed_phases += 3
+        elif phase == "qa_review":
+            completed_phases += 2
+        elif phase == "ralph_execution":
+            completed_phases += 1
+
+    progress_pct = (completed_phases / all_phases_count * 100) if all_phases_count > 0 else 0
+
+    # Include Phase 0 in milestone counts for overview
+    total_milestones_with_phase0 = total_milestones + 1
+    completed_milestones_with_phase0 = completed_milestones + (1 if phase0_complete else 0)
+
+    # ── Quality metrics ──────────────────────────────────────────────────
+    total_bugfix_cycles = sum(
+        ms.get("bugfix_cycle", 0) for ms in milestone_states.values()
+    )
+    total_test_fix_cycles = sum(
+        ms.get("test_fix_cycle", 0) for ms in milestone_states.values()
+    )
+    milestones_with_bugfixes = [
+        {"id": int(mid), "cycles": ms.get("bugfix_cycle", 0)}
+        for mid, ms in milestone_states.items()
+        if ms.get("bugfix_cycle", 0) > 0
+    ]
+
+    # ── Pipeline running status ──────────────────────────────────────────
+    running, lock_data = is_pipeline_running(project.root_path)
+
+    # Build per-milestone story counts + completion status
+    milestone_details = []
+    for m in config_milestones:
+        mid = m["id"]
+        ms_state = milestone_states.get(str(mid), {})
+        milestone_details.append({
+            "id": mid,
+            "name": m["name"],
+            "stories": m.get("stories", 0),
+            "completed": ms_state.get("phase") == "complete",
+        })
+
+    # Cost by phase from state.json
+    cost_by_phase: dict = {}
+    if state_path.exists():
+        try:
+            with open(state_path) as f:
+                s2 = json.load(f)
+            for ph_key, ph_val in s2.get("cost", {}).get("by_phase", {}).items():
+                if isinstance(ph_val, (int, float)):
+                    cost_by_phase[ph_key] = ph_val
+                elif isinstance(ph_val, dict):
+                    cost_by_phase[ph_key] = ph_val.get("cost_usd", 0.0)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return jsonify({
+        "project": {
+            "name": project.name,
+            "description": project_description,
+            "root_path": project.root_path,
+            "total_milestones": total_milestones_with_phase0,
+            "total_stories": total_stories,
+            "models": models_config,
+            "budget_usd": budget_usd,
+            "max_bugfix_cycles": max_bugfix_cycles,
+        },
+        "progress": {
+            "completed_milestones": completed_milestones_with_phase0,
+            "failed_milestones": failed_milestones,
+            "total_milestones": total_milestones_with_phase0,
+            "percentage": round(progress_pct, 1),
+            "current_milestone": current_milestone_id,
+            "current_milestone_name": current_milestone_name,
+            "current_phase": current_phase,
+        },
+        "cost": {
+            "total_usd": cost_total,
+            "budget_usd": budget_usd,
+            "budget_pct": round(cost_total / budget_usd * 100, 1) if budget_usd > 0 else 0,
+            "by_milestone": cost_by_milestone,
+            "by_phase": cost_by_phase,
+        },
+        "quality": {
+            "total_bugfix_cycles": total_bugfix_cycles,
+            "total_test_fix_cycles": total_test_fix_cycles,
+            "milestones_with_bugfixes": milestones_with_bugfixes,
+        },
+        "pipeline": {
+            "running": running,
+            "status": project.status,
+            "lock": lock_data,
+        },
+        "milestone_details": milestone_details,
+    })
 
 
 @bp.route("/<int:project_id>/test-analytics", methods=["GET"])

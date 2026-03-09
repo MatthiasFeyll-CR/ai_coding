@@ -39,7 +39,7 @@ export function DeleteProjectModal({
               <div className="p-2 rounded-full bg-status-error/10">
                 <AlertTriangleIcon className="w-5 h-5 text-status-error" />
               </div>
-              <h2 className="text-lg font-semibold">Delete Project</h2>
+              <h2 className="text-lg font-semibold">Unlink Project</h2>
             </div>
             <button
               onClick={onCancel}
@@ -52,7 +52,7 @@ export function DeleteProjectModal({
           {/* Body */}
           <div className="px-6 py-4">
             <p className="text-text-secondary text-sm leading-relaxed">
-              Are you sure you want to remove{' '}
+              Are you sure you want to unlink{' '}
               <span className="font-semibold text-text-primary">{projectName}</span>{' '}
               from the dashboard?
             </p>
@@ -74,7 +74,7 @@ export function DeleteProjectModal({
               onClick={onConfirm}
               className="btn-danger text-sm px-4 py-2"
             >
-              Delete
+              Unlink
             </button>
           </div>
         </motion.div>

@@ -9,7 +9,6 @@ import { useNavigate } from 'react-router-dom';
 export function LinkProjectModal() {
   const { modals, closeModal, setActiveProject } = useAppStore();
   const [projectPath, setProjectPath] = useState('');
-  const [projectName, setProjectName] = useState('');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -17,14 +16,12 @@ export function LinkProjectModal() {
     mutationFn: () =>
       projectsApi.create({
         project_path: projectPath,
-        name: projectName || undefined,
       }),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       setActiveProject(response.data);
       closeModal('linkProject');
       setProjectPath('');
-      setProjectName('');
       navigate(`/dashboard/${response.data.id}`);
     },
   });
@@ -69,19 +66,7 @@ export function LinkProjectModal() {
                 placeholder="/path/to/your/project"
                 className="input"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">
-                Project Name
-              </label>
-              <input
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                placeholder="Auto-detected from path"
-                className="input"
-              />
+              <p className="text-xs text-text-muted mt-1">Project name will be auto-detected from the path</p>
             </div>
 
             {createMutation.isError && (

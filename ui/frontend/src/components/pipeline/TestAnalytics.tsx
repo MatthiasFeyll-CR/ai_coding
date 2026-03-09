@@ -83,9 +83,9 @@ function KpiCard({ label, value, subtitle, icon, accentClass }: KpiCardProps) {
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <p className="text-text-muted text-xs font-medium uppercase tracking-wider">{label}</p>
+          <p className="text-text-muted text-sm font-medium uppercase tracking-wider">{label}</p>
           <p className={`text-2xl font-bold ${accentClass}`}>{value}</p>
-          {subtitle && <p className="text-text-muted text-xs">{subtitle}</p>}
+          {subtitle && <p className="text-text-muted text-sm">{subtitle}</p>}
         </div>
         <div className={`p-2.5 rounded-lg bg-bg-tertiary ${accentClass}`}>
           {icon}
@@ -112,8 +112,8 @@ function ChartCard({ title, subtitle, children, className }: ChartCardProps) {
       className={`bg-bg-secondary rounded-xl border border-border-subtle p-5 ${className ?? ''}`}
     >
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
-        {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
+        <h3 className="text-base font-semibold text-text-primary">{title}</h3>
+        {subtitle && <p className="text-sm text-text-muted mt-0.5">{subtitle}</p>}
       </div>
       {children}
     </motion.div>
@@ -130,7 +130,7 @@ function StatusBadge({ variant, children }: { variant: 'success' | 'error' | 'wa
     default: 'bg-bg-tertiary text-text-secondary',
   };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${classes[variant]}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${classes[variant]}`}>
       {children}
     </span>
   );
@@ -142,7 +142,7 @@ const tooltipStyle = {
   backgroundColor: '#111827',
   border: '1px solid #374151',
   borderRadius: '8px',
-  fontSize: '12px',
+  fontSize: '13px',
   boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
 };
 
@@ -169,13 +169,53 @@ export function TestAnalytics({ projectId }: TestAnalyticsProps) {
 
   if (!data || (data.summary.total_test_runs === 0 && data.milestones.length === 0 && data.qa_reports.length === 0)) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-center">
-        <BeakerIcon className="w-12 h-12 text-text-muted mb-3" />
-        <h3 className="text-lg font-semibold text-text-primary mb-1">No Test Data Yet</h3>
-        <p className="text-text-muted text-sm max-w-md">
-          Test analytics will appear here once the pipeline runs QA phases.
-          Data is collected from pipeline event logs and QA result files.
-        </p>
+      <div className="relative">
+        {/* Placeholder skeleton layout */}
+        <div className="space-y-6 pointer-events-none select-none">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {['Pass Rate', 'Test Runs', 'Fix Cycles', 'QA First Pass'].map((label) => (
+              <div key={label} className="bg-bg-secondary rounded-xl border border-border-subtle p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-9 h-9 rounded-lg bg-bg-tertiary" />
+                  <span className="text-xs text-text-muted uppercase tracking-wider">{label}</span>
+                </div>
+                <div className="h-8 w-16 bg-bg-tertiary rounded" />
+                <div className="h-3 w-28 bg-bg-tertiary rounded mt-2" />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-bg-secondary rounded-xl border border-border-subtle p-5 lg:col-span-2">
+              <div className="h-4 w-40 bg-bg-tertiary rounded mb-4" />
+              <div className="h-[240px] bg-bg-tertiary/50 rounded" />
+            </div>
+            <div className="bg-bg-secondary rounded-xl border border-border-subtle p-5">
+              <div className="h-4 w-32 bg-bg-tertiary rounded mb-4" />
+              <div className="h-[240px] bg-bg-tertiary/50 rounded" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-bg-secondary rounded-xl border border-border-subtle p-5">
+              <div className="h-4 w-36 bg-bg-tertiary rounded mb-4" />
+              <div className="h-[200px] bg-bg-tertiary/50 rounded" />
+            </div>
+            <div className="bg-bg-secondary rounded-xl border border-border-subtle p-5">
+              <div className="h-4 w-36 bg-bg-tertiary rounded mb-4" />
+              <div className="h-[200px] bg-bg-tertiary/50 rounded" />
+            </div>
+          </div>
+        </div>
+        {/* Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="bg-bg-secondary/70 backdrop-blur-sm border border-border-subtle rounded-2xl px-10 py-8 flex flex-col items-center text-center shadow-xl max-w-md">
+            <BeakerIcon className="w-10 h-10 text-text-muted mb-3 opacity-60" />
+            <h3 className="text-base font-semibold text-text-primary mb-1">No Test Data Yet</h3>
+            <p className="text-text-muted text-sm leading-relaxed">
+              Test analytics will appear here once the pipeline runs QA phases.
+              Data is collected from pipeline event logs and QA result files.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -253,7 +293,7 @@ export function TestAnalytics({ projectId }: TestAnalyticsProps) {
         >
           {top_failing_files.length > 0 ? (
             <div className="overflow-auto max-h-[280px]">
-              <table className="w-full text-xs">
+              <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-bg-secondary">
                   <tr className="text-text-muted border-b border-border-subtle">
                     <th className="text-left py-2 pr-3 font-medium">File</th>
@@ -270,7 +310,7 @@ export function TestAnalytics({ projectId }: TestAnalyticsProps) {
                         <td className="py-2 pr-3">
                           <div className="flex items-center gap-2">
                             <FileWarningIcon className="w-3 h-3 text-status-error flex-shrink-0" />
-                            <span className="text-text-primary font-mono text-[11px] truncate max-w-[200px]" title={f.file}>
+                            <span className="text-text-primary font-mono text-xs truncate max-w-[200px]" title={f.file}>
                               {f.file.split('/').pop()}
                             </span>
                           </div>
@@ -368,7 +408,7 @@ function MilestoneTable({ milestones, maxBugfixCycles }: { milestones: Milestone
 
   return (
     <div className="overflow-auto max-h-[320px]">
-      <table className="w-full text-xs">
+      <table className="w-full text-sm">
         <thead className="sticky top-0 bg-bg-secondary">
           <tr className="text-text-muted border-b border-border-subtle">
             <th className="text-left py-2 pr-3 font-medium">Milestone</th>
@@ -385,7 +425,7 @@ function MilestoneTable({ milestones, maxBugfixCycles }: { milestones: Milestone
             <tr key={m.id} className="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors">
               <td className="py-2.5 pr-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-text-muted font-mono text-[10px]">M{m.id}</span>
+                  <span className="text-text-muted font-mono text-xs">M{m.id}</span>
                   <span className="text-text-primary font-medium">{m.name}</span>
                   {m.first_pass && (
                     <span title="Passed QA on first attempt" className="text-status-success">
@@ -434,7 +474,7 @@ function MilestoneTable({ milestones, maxBugfixCycles }: { milestones: Milestone
 
 function BugfixIndicator({ cycles, max }: { cycles: number; max: number }) {
   if (cycles === 0) {
-    return <span className="text-text-muted text-[10px]">0</span>;
+    return <span className="text-text-muted text-xs">0</span>;
   }
 
   return (
@@ -450,7 +490,7 @@ function BugfixIndicator({ cycles, max }: { cycles: number; max: number }) {
           title={i < cycles ? `Cycle ${i + 1}` : 'Unused'}
         />
       ))}
-      <span className="ml-1 text-[10px] text-text-muted font-mono">{cycles}</span>
+      <span className="ml-1 text-xs text-text-muted font-mono">{cycles}</span>
     </div>
   );
 }
@@ -499,7 +539,7 @@ function PassFailDonut({ passed, failed }: { passed: number; failed: number }) {
           ]}
         />
         <Legend
-          wrapperStyle={{ fontSize: '11px' }}
+          wrapperStyle={{ fontSize: '13px' }}
           formatter={(value) => <span className="text-text-secondary">{value}</span>}
         />
         <text x="50%" y="47%" textAnchor="middle" fill="#f9fafb" fontSize="22" fontWeight="bold">
@@ -539,13 +579,14 @@ function FixCyclesChart({ milestones }: { milestones: MilestoneTestAnalytics[] }
     <ResponsiveContainer width="100%" height={280}>
       <BarChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-        <XAxis dataKey="name" stroke="#6b7280" fontSize={11} />
-        <YAxis stroke="#6b7280" fontSize={11} allowDecimals={false} />
+        <XAxis dataKey="name" stroke="#6b7280" fontSize={12} />
+        <YAxis stroke="#6b7280" fontSize={12} allowDecimals={false} />
         <Tooltip
           contentStyle={tooltipStyle}
           labelStyle={{ color: '#f9fafb', fontWeight: 600 }}
+          cursor={{ fill: 'rgba(255,255,255,0.04)' }}
         />
-        <Legend wrapperStyle={{ fontSize: '11px' }} />
+        <Legend wrapperStyle={{ fontSize: '13px' }} />
         <Bar dataKey="bugfix" name="Bugfix Cycles" stackId="a" fill={STATUS_AMBER} radius={[0, 0, 0, 0]} />
         <Bar dataKey="testFix" name="Test Fix Cycles" stackId="a" fill={STATUS_RED} radius={[4, 4, 0, 0]} />
       </BarChart>
@@ -560,7 +601,7 @@ function QaReportTimeline({ reports, milestones }: { reports: TestAnalyticsData[
 
   return (
     <div className="overflow-auto max-h-[320px]">
-      <table className="w-full text-xs">
+      <table className="w-full text-sm">
         <thead className="sticky top-0 bg-bg-secondary">
           <tr className="text-text-muted border-b border-border-subtle">
             <th className="text-left py-2 pr-3 font-medium">Milestone</th>
@@ -575,12 +616,12 @@ function QaReportTimeline({ reports, milestones }: { reports: TestAnalyticsData[
             <tr key={i} className="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors">
               <td className="py-2 pr-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-text-muted font-mono text-[10px]">M{r.milestone}</span>
+                  <span className="text-text-muted font-mono text-xs">M{r.milestone}</span>
                   <span className="text-text-primary">{nameMap.get(r.milestone) ?? `Milestone ${r.milestone}`}</span>
                 </div>
               </td>
               <td className="text-center py-2 px-2">
-                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
+                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
                   r.cycle === 0 ? 'bg-accent-cyan/20 text-accent-cyan' : 'bg-status-warning/20 text-status-warning'
                 }`}>
                   {r.cycle}
@@ -601,7 +642,7 @@ function QaReportTimeline({ reports, milestones }: { reports: TestAnalyticsData[
               <td className="text-right py-2 px-2 font-mono text-text-secondary">
                 {r.exit_code}
               </td>
-              <td className="py-2 pl-2 text-text-muted font-mono text-[10px] truncate max-w-[200px]" title={r.file}>
+              <td className="py-2 pl-2 text-text-muted font-mono text-xs truncate max-w-[200px]" title={r.file}>
                 {r.file}
               </td>
             </tr>
