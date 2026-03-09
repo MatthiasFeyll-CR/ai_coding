@@ -288,6 +288,10 @@ def _write_back_config(
         config_data["test_execution"]["tier1"]["environments"] = environments
 
     # Build services health checks from infrastructure services
+    # Note: readiness probes (pg_isready, redis-cli ping, etc.) are for Docker
+    # Compose healthchecks INSIDE containers. The pipeline's built-in TCP port
+    # check handles host-side readiness, so we do NOT copy readiness as
+    # ready_command (those tools may not be installed on the host).
     services = []
     for svc in config.test_infrastructure.services:
         services.append(
@@ -297,7 +301,6 @@ def _write_back_config(
                 "host": "localhost",
                 "port": svc.port,
                 "startup_timeout": timeouts.setup_seconds,
-                "ready_command": svc.readiness,
             }
         )
     if services:

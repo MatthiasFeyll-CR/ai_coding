@@ -324,7 +324,9 @@ class TestPhase0Bootstrap:
         assert len(services) == 1
         assert services[0]["name"] == "postgres"
         assert services[0]["port"] == 5432
-        assert services[0]["ready_command"] == "pg_isready -U postgres"
+        # ready_command should NOT be written — readiness probes are for Docker
+        # healthchecks inside containers, not host-side commands
+        assert "ready_command" not in services[0]
 
 
 class TestPhase0DryRun:

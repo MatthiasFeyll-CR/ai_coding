@@ -265,6 +265,16 @@ def run_pipeline(args: argparse.Namespace) -> None:
     ):
         plogger.info("Auto-validating test infrastructure...")
         try:
+            if config.test_execution.setup_command:
+                plogger.info("Starting test infrastructure services...")
+                from ralph_pipeline.subprocess_utils import run_command as _run_cmd
+                _run_cmd(
+                    config.test_execution.setup_command,
+                    cwd=project_root,
+                    timeout=config.test_execution.setup_timeout_seconds,
+                    check=True,
+                    shell=True,
+                )
             if config.test_execution.services:
                 report = health_checker.wait_all_ready(config.test_execution.services)
                 for r in report.services:
@@ -468,6 +478,15 @@ def validate_infra(args: argparse.Namespace) -> None:
         ("teardown", "Clean slate", lambda: infra.teardown_all()),
         ("build", "Build test images", lambda: infra.ensure_tier2()),
     ]
+
+    for step_name, step_desc, step_fn in steps:
+        plogger.info(f"{step_desc}...")
+        try:
+            step_fn()
+            plogger.success(f"{step_name} completed")
+        except Exception as e:
+            plogger.error(f"{step_name} FAILED: {e}")
+            sys.exit(1)
 
     # Health checks per service
     if config.test_execution.services:

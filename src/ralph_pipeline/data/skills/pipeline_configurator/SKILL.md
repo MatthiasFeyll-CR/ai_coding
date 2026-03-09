@@ -266,7 +266,7 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
 
    **How to populate the spec:**
 
-   - **services:** Enumerate ALL external infrastructure the project's tests depend on **across ALL milestones**. Scan every `docs/05-milestones/milestone-*.md` file for references to databases, caches, message brokers, search engines, etc. Also check `docs/02-architecture/tech-stack.md` and `docs/04-test-architecture/test-plan.md`. Each service needs: name, pre-built image (never custom-build), exposed port, environment variables, and readiness probe type (`pg_isready` for postgres, `redis-cli ping` for redis, `tcp` for generic TCP check).
+   - **services:** Enumerate ALL external infrastructure the project's tests depend on **across ALL milestones**. Scan every `docs/05-milestones/milestone-*.md` file for references to databases, caches, message brokers, search engines, etc. Also check `docs/02-architecture/tech-stack.md` and `docs/04-test-architecture/test-plan.md`. Each service needs: name, pre-built image (never custom-build), exposed port, environment variables, and readiness probe type. The `readiness` field tells Phase 0 what Docker healthcheck to generate **inside the container** (e.g. `pg_isready` for postgres, `redis-cli ping` for redis, `rabbitmq-diagnostics check_port_connectivity` for rabbitmq). These are NOT host-side commands — the pipeline's built-in TCP port checker handles host-side readiness automatically.
    - **runtimes:** One entry per distinct runtime in the project. Determine from `tech-stack.md`. Each runtime needs: name, base Docker image, source directory to bind-mount, working directory inside container, dependency files (for hash-based rebuild detection), install command, test framework, test command, and CI-specific flags.
    - **databases:** Extract from test configuration files (e.g., Django `settings/test.py`, Rails `database.yml`), test architecture docs (`docs/04-test-architecture/test-plan.md`), or environment variable references in milestone scope files. Each entry links to a service and specifies the test database name, user, and password. **This is critical** — wrong DB names cause silent test failures.
    - **timeouts:** Reasonable defaults. Adjust based on project size.
@@ -274,7 +274,7 @@ This is the primary output. It replaces all hardcoded values in the pipeline.
    **Key constraints:**
    - NEVER generate concrete shell commands — only declare infrastructure needs.
    - Services array must cover the FULL project lifecycle (all milestones), not just M1.
-   - Readiness probes must be host-side compatible (no `docker exec` — Phase 0 handles this).
+   - Readiness probes are for Docker Compose healthchecks inside containers, NOT host-side commands. Phase 0 generates proper `healthcheck` blocks in docker-compose.test.yml from these values. The pipeline's built-in TCP port checker handles host-side readiness.
    - If you are uncertain whether a service is needed, **ask the user** — never guess.
 
 5. **scaffolding:**
