@@ -58,7 +58,8 @@ db.init_app(app)
 with app.app_context():
     db_uri = app.config["SQLALCHEMY_DATABASE_URI"]
     db_path = db_uri.replace("sqlite:///", "")
-    os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
+    db_dir = os.path.dirname(os.path.abspath(db_path)) if db_path else "."
+    os.makedirs(db_dir, exist_ok=True)
     db.create_all()
 
 # Register API blueprints

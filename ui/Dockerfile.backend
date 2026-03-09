@@ -16,10 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ .
 
 # Create data directory
-RUN mkdir -p data
+RUN mkdir -p /app/data
 
 # Expose port
 EXPOSE 5000
 
-# Run with eventlet
-CMD ["python", "app.py"]
+# Ensure data dir exists at runtime (bind mounts override build-time dirs)
+CMD ["sh", "-c", "mkdir -p /app/data && python app.py"]

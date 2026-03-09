@@ -9,13 +9,12 @@ services:
       - "5000:5000"
     volumes:
       - ./backend:/app
-      - pipeline-data:/app/data
       # Mount the host project directories so the pipeline can access them
       - ${HOST_PROJECTS_DIR:-/home}:/projects:ro
     environment:
       - FLASK_ENV=development
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
-      - DATABASE_URL=sqlite:///data/pipeline.db
+      - DATABASE_URL=sqlite:////app/data/pipeline.db
       - CORS_ORIGINS=http://localhost:3000,http://localhost:5000
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     restart: unless-stopped
@@ -35,5 +34,4 @@ services:
       - backend
 
 volumes:
-  pipeline-data:
   node_modules:
